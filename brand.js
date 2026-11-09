@@ -3,7 +3,7 @@
 // square buttons, 48px; system font with PingFang HK.
 window.BRAND = {
   id: "sapien", name: "Nixon Math MC Checker", title: "Nixon Math MC Checker", resultsTitle: "Nixon Math MC Results",
-  logo: "logo.png",
+  logo: "logo.png?v=2",
   features: { dse: true, topics: true, typeIn: true, reports: true },
   css: {
     "--ground": "#F5F3EE", "--surface": "#ffffff", "--ink": "#141414", "--ink2": "#4a4a46",
