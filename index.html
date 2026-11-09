@@ -1,0 +1,2110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GTC MC Scanner</title>
+<script src="assets/pdf.min.js"></script>
+<script src="assets/exceljs.min.js"></script>
+<script src="brand.js"></script>
+<meta name="description" content="Read multiple-choice answer sheets from PDF or photos, score them against a key and export to Excel. Runs in the browser; nothing is uploaded.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ground:#f3f4f1; --surface:#fff; --ink:#111a16; --ink2:#3e4b45;
+  --line:#dde2dd; --line2:#c3cbc5;
+  --acc:#0b6b4a; --acc-hover:#08583c; --acc-soft:#e4f1ea; --acc-ink:#fff;
+  --acc-line:#0b6b4a; --good:#0b6b4a; --link:#0b6b4a;
+  --btn-h:38px; --btn-h-sm:32px; --btn-r:6px; --step-r:6px;
+  --bad:#b42318; --bad-soft:#fdeceb; --warn:#8f5200; --warn-soft:#fdf2df;
+  --manual:#c2410c; --right:#e2f2e8; --wrong:#fbe6e4; --grey-cell:#eceeec;
+  --r:8px; --r-sm:6px;
+  --font:"Geist",-apple-system,"Segoe UI",sans-serif; --mono:"Geist Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:400 14px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+.skip{position:absolute;left:-999px;top:8px;background:var(--ink);color:#fff;padding:8px 12px;border-radius:var(--r-sm);z-index:50}
+.skip:focus{left:8px}
+:focus-visible{outline:2px solid var(--acc-line);outline-offset:2px}
+.icon{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- top bar ---------- */
+.topbar{background:var(--surface);border-bottom:1px solid var(--line)}
+.topbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-top:14px;padding-bottom:14px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em}
+.brand svg{width:26px;height:26px}
+.privacy{display:flex;align-items:center;gap:7px;color:var(--ink2);font-size:13px}
+.wrap{max-width:1180px;margin:0 auto;padding-left:24px;padding-right:24px}
+
+/* ---------- panels ---------- */
+main{padding-top:24px;padding-bottom:40px}
+.setup{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;margin:0 0 16px}
+.setup{margin-bottom:16px}
+.setup .card{margin:0}
+.card h2{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-size:15px;font-weight:600;letter-spacing:-.005em}
+.card h2 .step{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:6px;background:var(--ink);color:#fff;font:600 12px/1 var(--mono);border-radius:var(--step-r)}
+.card h2 .opt{font-weight:400;color:var(--ink2);font-size:13px}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.bar .sp{flex:1}
+.card h2.bar{margin-bottom:14px}
+
+label{display:block;font-size:13px;font-weight:500;color:var(--ink);margin:0 0 5px}
+input[type=text],input[type=date],input[type=number],textarea,select{
+  width:100%;height:38px;padding:0 10px;border:1px solid var(--line2);border-radius:var(--r-sm);
+  font:400 14px var(--font);background:var(--surface);color:var(--ink);transition:border-color .12s}
+textarea{height:auto;padding:9px 10px;font-family:var(--mono);font-size:14px;letter-spacing:.06em;resize:vertical;line-height:1.55}
+input:hover,textarea:hover,select:hover{border-color:#a3ada6}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc-line);box-shadow:0 0 0 3px var(--acc-soft)}
+select{appearance:none;padding-right:30px;background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%233e4b45' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center}
+.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.fields .full{grid-column:1 / -1}
+
+/* ---------- buttons ---------- */
+button{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:var(--btn-h);padding:0 16px;
+  border:1px solid var(--acc);border-radius:var(--btn-r);background:var(--acc);color:var(--acc-ink);
+  font:500 14px var(--font);cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,transform .06s}
+button:hover{background:var(--acc-hover);border-color:var(--acc-hover)}
+button:active{transform:translateY(1px)}
+button.sec{background:var(--surface);color:var(--ink);border-color:var(--line2)}
+button.sec:hover{background:var(--ground);border-color:#a3ada6}
+button.small{height:var(--btn-h-sm);padding:0 12px;font-size:13px}
+button:disabled{opacity:.45;cursor:default}
+
+/* ---------- key ---------- */
+.keyrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+#keyInfo{font-size:13px;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ok-msg{color:var(--good);font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.warn-msg{color:var(--warn);font-weight:600}
+.bad-msg{color:var(--bad);font-weight:600}
+.cancel{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+.cancel .keyrow{margin-top:0}
+.cancel label{margin:0}
+.cancel input{width:110px}
+.cancel select{width:auto;min-width:250px}
+.hint{color:var(--ink2);font-size:13px}
+
+/* ---------- drop zone ---------- */
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;border:1.5px dashed var(--line2);border-radius:var(--r);
+  padding:30px 20px;text-align:center;cursor:pointer;transition:border-color .12s,background .12s}
+.drop:hover,.drop.hover,#key.hover{border-color:var(--acc-line);background:var(--acc-soft)}
+.drop .big{font-size:15px;font-weight:600}
+.drop .icon{width:24px;height:24px;color:var(--acc-line)}
+.note{font-size:13px;color:var(--ink2)}
+#prog{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:14px 0 0;display:none}
+#progbar{height:100%;width:0;background:var(--acc);transition:width .2s}
+#status{margin-top:10px}
+
+/* ---------- results table ---------- */
+.scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r-sm)}
+table{border-collapse:separate;border-spacing:0;font-size:13px}
+td,th{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 6px;height:32px;text-align:center;white-space:nowrap;background:var(--surface)}
+th{background:#f7f8f6;font-weight:600;font-size:12px;color:var(--ink2);font-family:var(--mono)}
+th:first-child,th:nth-child(2),th:nth-child(3),th:nth-child(4){font-family:var(--font);font-size:12.5px}
+tr:last-child td{border-bottom:0}
+td:last-child,th:last-child{border-right:0}
+.stick{position:sticky;left:0;z-index:1;min-width:38px}
+.stick2{position:sticky;z-index:1;box-shadow:1px 0 0 var(--line)}
+td.ans{font:500 13px var(--mono);min-width:28px;cursor:pointer;transition:box-shadow .1s}
+td.ans:hover{box-shadow:inset 0 0 0 2px var(--acc-line)}
+td.name input{width:140px;height:28px;padding:0 6px;font-size:13px;border:1px solid transparent;border-radius:4px;background:transparent}
+td.name input:hover{border-color:var(--line2)}
+td.name input:focus{border-color:var(--acc-line);box-shadow:none;background:var(--surface)}
+td.name input::placeholder{color:#8a948f}
+.ansX{color:#8a948f}.ansQ{color:var(--bad);font-weight:600}.ansM{color:var(--warn);font-weight:600}
+td.right{background:var(--right)}td.wrong{background:var(--wrong)}
+.over{box-shadow:inset 0 0 0 2px var(--manual)}
+td.ans.over:hover{box-shadow:inset 0 0 0 2px var(--manual),inset 0 0 0 4px #fff}
+th.cx,td.cx{background:var(--grey-cell)!important;color:#8a948f;text-decoration:line-through}
+.st-ok{color:var(--good);font-weight:500}.st-man{color:#1d4ed8;font-weight:500}.st-bad{color:var(--bad);font-weight:600}
+.correctrate td{font:500 12px var(--mono);color:var(--ink2)}
+td a{color:var(--link);font-weight:500;text-decoration:none}
+td a:hover{text-decoration:underline}
+.failcell{text-align:left!important;white-space:normal!important;min-width:460px;padding:8px 10px!important;height:auto!important}
+.failcell .msg{color:var(--bad)}
+.failcell .detail{font-size:12px;color:var(--ink2);font-family:var(--mono)}
+.manrow{display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.manrow input{font-family:var(--mono);width:360px!important;height:32px!important}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 0;font-size:13px;color:var(--ink2)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:14px;border-radius:3px;border:1px solid var(--line2);display:inline-block}
+
+/* ---------- check by eye ---------- */
+.count{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;background:var(--warn-soft);color:var(--warn);font-size:12.5px;font-weight:600}
+.count.done{background:var(--acc-soft);color:var(--good)}
+#reviewList{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:12px}
+.flagbox{border:1px solid var(--line);border-left:3px solid var(--bad);border-radius:var(--r-sm);padding:12px 14px;background:var(--surface)}
+.flagbox.resolved{border-left-color:var(--good);background:#fbfcfb}
+.flagbox b{font-weight:600}
+.flagbox .note{display:block;margin-top:2px;font-family:var(--mono);font-size:12px}
+.flagbox img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:4px;margin-top:10px;background:#fff}
+.judge{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;color:var(--ink2);font-size:13px}
+.judge button,#picker button{height:34px;min-width:40px;padding:0 10px;font:600 14px var(--mono);background:var(--surface);color:var(--ink);border:1px solid var(--line2)}
+.judge button:hover,#picker button:hover{background:var(--acc-soft);border-color:var(--acc-line)}
+.judge button.sel,#picker button.sel{background:var(--acc);color:var(--acc-ink);border-color:var(--acc-line)}
+.judge button.sel::after,#picker button.sel::after{content:"";width:12px;height:12px;margin-left:5px;background:currentColor;
+  -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/contain no-repeat;
+          mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center/contain no-repeat}
+.judge button.guess{border:1.5px dashed var(--acc-line);color:var(--acc-line)}
+.judge button.dim,#picker button.dim{font:500 13px var(--font);min-width:0;color:var(--ink2)}
+
+/* ---------- picker + sheet view ---------- */
+#picker{position:absolute;z-index:20;background:var(--surface);border:1px solid var(--line2);border-radius:var(--r);box-shadow:0 8px 24px rgba(17,26,22,.14);padding:12px;display:none;max-width:calc(100vw - 16px)}
+#picker .ttl{font-size:13px;color:var(--ink2);margin-bottom:8px}
+#picker .row{display:flex;gap:6px;flex-wrap:wrap}
+#ovWrap{position:relative;overflow:auto;max-height:78vh;border:1px solid var(--line);border-radius:var(--r-sm)}
+#ovCanvas{display:block;cursor:crosshair;max-width:100%}
+.footer{color:var(--ink2);font-size:12.5px;padding-bottom:28px}
+
+/* ---------- extras (topics, DSE papers, typed answers, reports) ---------- */
+[hidden]{display:none!important}
+.dse{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 14px;padding:0 0 14px;border-bottom:1px solid var(--line)}
+.dse label{margin:0}
+.dse select{width:auto;min-width:220px}
+details.topics{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+details.topics summary{cursor:pointer;font-weight:500;list-style:none;display:flex;align-items:center;gap:8px}
+details.topics summary::-webkit-details-marker{display:none}
+details.topics summary::before{content:"";width:8px;height:8px;border-right:2px solid var(--ink);border-bottom:2px solid var(--ink);transform:rotate(-45deg);transition:transform .15s;margin-right:2px}
+details.topics[open] summary::before{transform:rotate(45deg)}
+#topicGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 12px;margin-top:12px;max-height:340px;overflow:auto;padding-right:4px}
+#topicGrid .tq{display:flex;align-items:center;gap:8px}
+#topicGrid .tq span{font:600 12px var(--mono);width:30px;flex:none;color:var(--ink2)}
+#topicGrid input{height:32px;font-size:13px}
+.typein{display:grid;grid-template-columns:minmax(0,200px) minmax(0,1fr) auto;gap:10px;align-items:end;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}
+.typein label{margin-bottom:5px}
+.typein #typeAns{font-family:var(--mono);letter-spacing:.06em}
+#typeMsg{grid-column:1 / -1;margin:0}
+.rep{max-width:880px}
+.rep-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.rep-head h3{margin:0;font-size:22px;font-weight:600;letter-spacing:-.01em}
+.rep-head .meta{color:var(--ink2);font-size:13px;margin-top:2px}
+.rep-brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px}
+.rep-brand img,.rep-brand svg{width:24px;height:24px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
+.tile{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px}
+.tile .k{font-size:12.5px;color:var(--ink2)}
+.tile .v{font:600 22px/1.25 var(--font);margin-top:2px}
+.tile .v small{font-size:13px;font-weight:500;color:var(--ink2)}
+.tile.main{background:var(--ink);border-color:var(--ink);color:#fff}
+.tile.main .k,.tile.main .v small{color:#cfd3d1}
+.sw2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 18px}
+.sw2 > div{border:1px solid var(--line);border-radius:var(--r-sm);padding:12px 14px}
+.sw2 h4{margin:0 0 6px;font-size:14px}
+.sw2 ul{margin:0;padding-left:18px}
+.sw2 li{margin:2px 0}
+.sw2 .strong h4{color:var(--good)} .sw2 .weak h4{color:var(--bad)}
+.rep h4.sec{margin:18px 0 8px;font-size:14px}
+.rt{width:100%;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
+.rt th,.rt td{height:30px;font-size:13px}
+.rt td.l,.rt th.l{text-align:left;white-space:normal}
+.rt th{font-family:var(--font)}
+.meter{position:relative;height:10px;background:var(--grey-cell);border-radius:2px;min-width:120px}
+.meter i{position:absolute;left:0;top:0;bottom:0;background:var(--ink);border-radius:2px}
+.meter b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--bad)}
+.tag{display:inline-block;padding:0 7px;border-radius:9px;font-size:12px;font-weight:600;line-height:18px}
+.tag.s{background:var(--right);color:var(--good)} .tag.w{background:var(--wrong);color:var(--bad)} .tag.f{background:var(--grey-cell);color:var(--ink2)}
+.rep .foot{margin-top:14px;font-size:12px;color:var(--ink2)}
+#printArea{display:none}
+@media print{
+  @page{size:A4;margin:12mm}
+  body.printing > :not(#printArea){display:none!important}
+  body.printing #printArea{display:block}
+  body.printing{background:#fff}
+  #printArea .rep{page-break-after:always;max-width:none}
+  #printArea .rep:last-child{page-break-after:auto}
+  .tile.main{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .meter,.meter i,.tag,.rt td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+@media (max-width:860px){.setup{grid-template-columns:1fr}}
+@media (max-width:600px){
+  .wrap{padding-left:16px;padding-right:16px}
+  main{padding-top:16px}
+  .card{padding:16px}
+  .fields{grid-template-columns:1fr}
+  button,input[type=text],input[type=date],input[type=number],select{min-height:44px}
+  button.small{min-height:44px}
+  .judge button,#picker button{min-height:44px;min-width:44px}
+  #reviewList{grid-template-columns:1fr}
+  .cancel select,.cancel input{width:100%;min-width:0}
+  .manrow input{width:100%!important}
+  .card h2.bar button{flex:1}
+  .typein{grid-template-columns:1fr}
+  .sw2{grid-template-columns:1fr}
+  .dse select{width:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the scanner</a>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4m0 0-4 4m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 18h16"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+</svg>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <span id="brandMark" style="display:contents"><svg viewBox="0 0 26 26" aria-hidden="true"><rect x="1" y="1" width="24" height="24" rx="6" fill="#0b6b4a"/>
+        <rect x="6" y="7.5" width="5.5" height="3" rx="1" fill="#fff"/><rect x="14.5" y="7.5" width="5.5" height="3" rx="1" fill="none" stroke="#fff" stroke-width="1.2" opacity=".75"/>
+        <rect x="6" y="15.5" width="5.5" height="3" rx="1" fill="none" stroke="#fff" stroke-width="1.2" opacity=".75"/><rect x="14.5" y="15.5" width="5.5" height="3" rx="1" fill="#fff"/></svg></span>
+      <h1 id="brandName">GTC MC Scanner</h1>
+    </div>
+    <p class="privacy" style="margin:0"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Runs on this computer. Sheets and results are never uploaded.</p>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+
+<div class="setup">
+  <section class="card" aria-labelledby="h-exam">
+    <h2 id="h-exam"><span class="step">1</span>Exam <span class="opt">optional, shown in the export</span></h2>
+    <div class="fields">
+      <div class="full"><label for="examName">Exam name</label><input type="text" id="examName" placeholder="Mock 1, Maths Paper 2"></div>
+      <div><label for="examClass">Class</label><input type="text" id="examClass" placeholder="6A"></div>
+      <div><label for="examDate">Date</label><input type="date" id="examDate"></div>
+      <div><label for="nq">Questions</label><input type="number" id="nq" min="1" max="100" value="45"></div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="h-key">
+    <h2 id="h-key"><span class="step">2</span>Answer key <span class="opt">optional, turns on scoring</span></h2>
+    <div class="dse" id="dseRow" hidden>
+      <label for="dseYear">DSE past paper</label>
+      <select id="dseYear"><option value="">Choose a year…</option></select>
+      <span class="hint" id="dseNote">Fills the key, topics and HK % correct.</span>
+    </div>
+    <label for="key">Type or paste the key, or drop the answer-key PDF here</label>
+    <textarea id="key" rows="3" placeholder="ABDAC BCDAB …   or   1. A  2. B  3. D …"></textarea>
+    <div class="keyrow">
+      <button class="sec small" id="keyFileBtn"><svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>Load key from file</button>
+      <input type="file" id="keyFile" accept=".pdf,.txt,.csv,text/plain" style="display:none">
+      <span id="keyInfo" aria-live="polite"></span>
+    </div>
+    <div class="cancel">
+      <div class="keyrow">
+        <label for="cancelQ">Cancelled questions</label>
+        <input type="text" id="cancelQ" placeholder="e.g. 37">
+        <select id="cancelMode" aria-label="How to score cancelled questions">
+          <option value="give">Give everyone the mark</option>
+          <option value="drop">Don't count it (full mark goes down)</option>
+        </select>
+      </div>
+      <p class="hint" style="margin:6px 0 0">You can also type * for that question in the key.</p>
+    </div>
+    <details class="topics" id="topicsBox" hidden>
+      <summary>Question topics <span class="hint" id="topicCount"></span></summary>
+      <p class="hint" style="margin:8px 0 0">Topics power the student report. Pick from the list or type your own; use " / " for two topics.</p>
+      <div id="topicGrid"></div>
+      <div class="keyrow">
+        <button class="sec small" id="topicPasteBtn">Paste a column of topics</button>
+        <button class="sec small" id="topicClear">Clear topics</button>
+      </div>
+      <datalist id="topicList"></datalist>
+    </details>
+  </section>
+</div>
+
+<section class="card" aria-labelledby="h-sheets">
+  <h2 class="bar" id="h-sheets"><span class="step">3</span>Answer sheets <span class="sp"></span>
+    <button class="sec small" id="clearAll" style="display:none"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Clear all sheets</button></h2>
+  <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose answer sheet files">
+    <svg class="icon" aria-hidden="true"><use href="#i-upload"/></svg>
+    <span class="big">Drop PDF or photo files here, or click to choose</span>
+    <span class="note">Each PDF page is one sheet. JPG and PNG work everywhere; HEIC only in Safari.</span>
+    <input type="file" id="file" multiple accept=".pdf,image/*" style="display:none">
+  </div>
+  <div id="prog"><div id="progbar"></div></div>
+  <div id="status" class="note" aria-live="polite"></div>
+  <div class="typein" id="typeRow" hidden>
+    <div><label for="typeName">Or type a student's answers</label><input type="text" id="typeName" placeholder="Student name"></div>
+    <div><label for="typeAns" class="hint" style="font-weight:400">Answers in order (X = blank)</label><input type="text" id="typeAns" placeholder="ADBAC BCDAB …" autocomplete="off" autocapitalize="characters" spellcheck="false"></div>
+    <button id="typeAdd">Add and check</button>
+    <p class="note" id="typeMsg" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="card" id="resultsCard" style="display:none" aria-labelledby="h-results">
+  <h2 class="bar" id="h-results">Results <span class="sp"></span>
+    <label for="sortBy" style="display:inline;margin:0;font-weight:400;color:var(--ink2)">Sort</label>
+    <select id="sortBy" style="width:auto;height:32px">
+      <option value="upload">Upload order</option>
+      <option value="scoreDesc">Score, highest first</option>
+      <option value="scoreAsc">Score, lowest first</option>
+      <option value="name">Student name</option>
+    </select>
+    <button class="small" id="dlXlsx"><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>Excel</button>
+    <button class="sec small" id="dlCsv"><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>CSV</button>
+  </h2>
+  <div class="scroll" id="resultsTable"></div>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--right)"></i>Correct</span>
+    <span><i class="sw" style="background:var(--wrong)"></i>Wrong</span>
+    <span><i class="sw" style="box-shadow:inset 0 0 0 2px var(--manual)"></i>Changed by you</span>
+    <span><i class="sw" style="background:var(--grey-cell)"></i>Cancelled</span>
+    <span>X blank · AB double mark · ? unclear</span>
+  </div>
+  <p class="note" style="margin:8px 0 0">Click any answer to change it. Type names in the Student column; they go into the export. Use <b>view</b> to see a whole sheet.</p>
+</section>
+
+<section class="card" id="reviewCard" style="display:none" aria-labelledby="h-review">
+  <h2 id="h-review">Check by eye <span class="count" id="reviewCount"></span></h2>
+  <p class="note" style="margin:-6px 0 14px">Look at each crop and pick the final answer. A dashed button is the app's suggestion.</p>
+  <div id="reviewList"></div>
+</section>
+
+<section class="card" id="overlayCard" style="display:none" aria-labelledby="overlayName">
+  <h2 class="bar">Sheet <span id="overlayName" style="font-weight:500"></span><span class="sp"></span>
+    <button class="sec small" onclick="closeOverlay()"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>Close</button>
+  </h2>
+  <p class="note" id="ovNote" style="margin:-6px 0 12px">Every box the app found is outlined. Click a box to make it the answer; click the chosen box again to set the question blank. Orange means changed by you.</p>
+  <div id="ovWrap"><canvas id="ovCanvas"></canvas></div>
+</section>
+
+<section class="card" id="reportCard" hidden aria-labelledby="h-report">
+  <h2 class="bar" id="h-report">Student report <span class="sp"></span>
+    <select id="repWho" style="width:auto;height:var(--btn-h-sm)" aria-label="Student"></select>
+    <button class="sec small" id="repPrintOne">Print this</button>
+    <button class="small" id="repPrintAll">Print all reports</button>
+    <button class="sec small" id="repClose" aria-label="Close report"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+  </h2>
+  <div id="reportBody"></div>
+</section>
+
+</main>
+<div id="picker"></div>
+<div id="printArea"></div>
+<p class="footer wrap"><span id="footName">GTC MC Scanner</span>. Blank, double-marked and unclear answers always need a human check.</p>
+<script>
+/* MCScanner in-browser OMR engine (pure JS, no dependencies).
+ *
+ * Strategy: the printed answer grid IS the template. Detect all option-box
+ * outlines, assemble the 25-row x 4-block x 4-option structure, and read
+ * darkness at every slot. Per-row assembly makes it immune to skew and
+ * paper curvature; strict structure gates make wrong layouts fail loudly
+ * instead of being misread.
+ *
+ * API: MCEngine.analyze(rgba, w, h, {nQuestions}) ->
+ *   { status: "ok"|"grid_not_found", error?, results:[{q,answer,scores,
+ *     confidence,flag}], grid:{rowsFound, slots}, rotation }
+ * rgba: Uint8ClampedArray|Uint8Array, RGBA or RGB (auto by length).
+ */
+"use strict";
+const MCEngine = (() => {
+
+  // ---------- basic image ops ----------
+  function toGray(data, w, h) {
+    const ch = data.length / (w * h);
+    const g = new Uint8Array(w * h);
+    const sat = new Uint8Array(w * h);
+    const val = new Uint8Array(w * h);  // non-red ink darkness for answers
+    for (let i = 0, p = 0; i < w * h; i++, p += ch) {
+      const r = data[p], gr = data[p + 1], b = data[p + 2];
+      g[i] = (0.299 * r + 0.587 * gr + 0.114 * b) | 0;
+      const mx = Math.max(r, gr, b), mn = Math.min(r, gr, b);
+      sat[i] = mx ? ((mx - mn) * 255 / mx) | 0 : 0;
+      val[i] = studentInkValue(r, gr, b);
+    }
+    return { gray: g, sat, val };
+  }
+
+  function studentInkValue(r, g, b) {
+    // Ignore red-family teacher ink, but retain dark black, grey, blue,
+    // green and other readable student marks. Lower values mean darker ink.
+    const other = Math.max(g, b);
+    const redLike = r > 60 && r - other > 24 && r > other * 1.25;
+    return redLike ? 255 : Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+
+  function integral(src, w, h) {
+    // (w+1)x(h+1) summed-area table, Float64
+    const ii = new Float64Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let rowsum = 0;
+      const o = (y + 1) * (w + 1), po = y * (w + 1);
+      for (let x = 0; x < w; x++) {
+        rowsum += src[y * w + x];
+        ii[o + x + 1] = ii[po + x + 1] + rowsum;
+      }
+    }
+    return ii;
+  }
+
+  function boxMean(ii, w, h, x0, y0, x1, y1) {  // [x0,x1) x [y0,y1)
+    x0 = Math.max(0, x0); y0 = Math.max(0, y0);
+    x1 = Math.min(w, x1); y1 = Math.min(h, y1);
+    if (x1 <= x0 || y1 <= y0) return 255;
+    const W = w + 1;
+    const s = ii[y1 * W + x1] - ii[y0 * W + x1] - ii[y1 * W + x0] + ii[y0 * W + x0];
+    return s / ((x1 - x0) * (y1 - y0));
+  }
+
+  function inkMask(gray, sat, w, h, mode) {
+    // mode "neutral": adaptive threshold on gray only, and EXCLUDE saturated
+    //   pixels -> teacher's red/colored pen is invisible; printed grid in
+    //   black/gray is kept. Preferred for marked/graded sheets.
+    // mode "colored": gray-adaptive OR saturated -> also catches templates
+    //   printed in light red/pink (nx26). Fallback.
+    const ii = integral(gray, w, h);
+    const R = 25; // 51x51 window
+    const mask = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const m = boxMean(ii, w, h, x - R, y - R, x + R + 1, y + R + 1);
+        const i = y * w + x;
+        if (mode === "neutral") {
+          if (gray[i] < m - 10 && sat[i] <= 90) mask[i] = 1;
+        } else {
+          if (gray[i] < m - 10 || sat[i] > 40) mask[i] = 1;
+        }
+      }
+    }
+    return mask;
+  }
+
+  function close3(mask, w, h) { // 3x3 dilate then erode
+    const tmp = new Uint8Array(w * h);
+    const out = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        let v = 0;
+        for (let dy = -1; dy <= 1 && !v; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const yy = y + dy, xx = x + dx;
+            if (yy >= 0 && yy < h && xx >= 0 && xx < w && mask[yy * w + xx]) { v = 1; break; }
+          }
+        tmp[y * w + x] = v;
+      }
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        let v = 1;
+        for (let dy = -1; dy <= 1 && v; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const yy = y + dy, xx = x + dx;
+            if (yy < 0 || yy >= h || xx < 0 || xx >= w || !tmp[yy * w + xx]) { v = 0; break; }
+          }
+        out[y * w + x] = v;
+      }
+    return out;
+  }
+
+  function components(mask, w, h, maxW, maxH) {
+    // connected components (8-conn) via stack fill; returns bboxes
+    const lab = new Int32Array(w * h);
+    const boxes = [];
+    const stack = new Int32Array(w * h);
+    let next = 1;
+    for (let i = 0; i < w * h; i++) {
+      if (!mask[i] || lab[i]) continue;
+      let sp = 0; stack[sp++] = i; lab[i] = next;
+      let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, n = 0;
+      while (sp) {
+        const j = stack[--sp];
+        const y = (j / w) | 0, x = j - y * w;
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+        n++;
+        // early abort for huge components (page border, text blobs)
+        if (x1 - x0 > maxW * 3 && y1 - y0 > maxH * 3) { n = -1; }
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const yy = y + dy, xx = x + dx;
+            if (yy < 0 || yy >= h || xx < 0 || xx >= w) continue;
+            const k = yy * w + xx;
+            if (mask[k] && !lab[k]) { lab[k] = next; stack[sp++] = k; }
+          }
+      }
+      if (n > 0) boxes.push({ x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1, n });
+      next++;
+    }
+    return boxes;
+  }
+
+  function median(a) {
+    if (!a.length) return 0;
+    const s = [...a].sort((p, q) => p - q);
+    const m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+
+  // ---------- box detection ----------
+  function findOptionBoxes(gray, sat, w, h, mode) {
+    const mask = close3(inkMask(gray, sat, w, h, mode), w, h);
+    const minW = 0.012 * w, maxW = 0.045 * w;
+    const minH = 0.004 * h, maxH = 0.016 * h;
+    const comps = components(mask, w, h, maxW, maxH);
+    const out = [];
+    for (const b of comps) {
+      if (b.w < minW || b.w > maxW || b.h < minH || b.h > maxH) continue;
+      const ar = b.w / b.h;
+      if (ar < 1.6 || ar > 4.5) continue;
+      if (b.n < b.w * 1.5) continue; // too sparse to be a box outline
+      out.push(b);
+    }
+    return out;
+  }
+
+  // ---------- row lattice reconstruction ----------
+  // The 25 rows come in 5 groups of 5: offsets E(k) = k*s + floor(k/5)*(g-s).
+  // When a teacher's pen stroke obliterates a whole row of boxes, infer the
+  // missing row positions by DP-matching detected rows onto the lattice.
+  function reconstructRows(rows) {
+    const ys = rows.map(r => r.cy);
+    const diffs = [];
+    for (let i = 1; i < ys.length; i++) diffs.push(ys[i] - ys[i - 1]);
+    const sd = [...diffs].sort((a, b) => a - b);
+    const s = median(sd.slice(0, Math.max(3, Math.floor(sd.length * 0.6))));
+    if (!(s > 0)) return rows;
+    const gc = diffs.filter(d => d > 1.3 * s && d < 2.1 * s);
+    const g = gc.length ? median(gc) : 1.5 * s;
+    const E = k => k * s + Math.floor(k / 5) * (g - s);
+
+    // DP: match row j (in order) to lattice index k (in order)
+    const N = rows.length, INF = 1e15;
+    const dp = Array.from({ length: N }, () => new Float64Array(25).fill(INF));
+    const pk = Array.from({ length: N }, () => new Int8Array(25).fill(-1));
+    for (let k = 0; k <= 25 - N; k++) dp[0][k] = 0;
+    for (let j = 1; j < N; j++)
+      for (let k = j; k < 25; k++)
+        for (let k2 = j - 1; k2 < k; k2++) {
+          if (dp[j - 1][k2] >= INF) continue;
+          const c = dp[j - 1][k2] +
+            Math.abs((ys[j] - ys[j - 1]) - (E(k) - E(k2)));
+          if (c < dp[j][k]) { dp[j][k] = c; pk[j][k] = k2; }
+        }
+    let bk = -1, best = INF;
+    for (let k = N - 1; k < 25; k++)
+      if (dp[N - 1][k] < best) { best = dp[N - 1][k]; bk = k; }
+    if (bk < 0 || best / (N - 1) > s * 0.35) return rows; // bad fit -> give up
+    const assign = new Array(N);
+    for (let j = N - 1, k = bk; j >= 0; j--) { assign[j] = k; k = pk[j][k]; }
+
+    // build full 25 rows; missing ones synthesized from nearest anchors
+    const optGap = median(rows.map(r => r.optGap));
+    const out = [];
+    for (let k = 0; k < 25; k++) {
+      const j = assign.indexOf(k);
+      if (j >= 0) { out.push(rows[j]); continue; }
+      // nearest matched anchor
+      let bj = 0, bd = 1e9;
+      assign.forEach((ka, ja) => {
+        const d = Math.abs(ka - k);
+        if (d < bd) { bd = d; bj = ja; }
+      });
+      const y = rows[bj].cy + (E(k) - E(assign[bj]));
+      out.push({ boxes: [], groups: [], complete: [], optGap, cy: y,
+                 reconstructed: true });
+    }
+    return out;
+  }
+
+  // ---------- structure assembly ----------
+  function assembleGrid(boxes, w, h) {
+    if (boxes.length < 60) return { error: "too few boxes detected (" + boxes.length + ")" };
+    const medW = median(boxes.map(b => b.w));
+    const medH = median(boxes.map(b => b.h));
+    const cx = b => b.x + b.w / 2, cy = b => b.y + b.h / 2;
+
+    // rows: single-linkage clustering on cy
+    const sorted = [...boxes].sort((a, b) => cy(a) - cy(b));
+    const rows = [[sorted[0]]];
+    for (let i = 1; i < sorted.length; i++) {
+      const prev = rows[rows.length - 1];
+      if (cy(sorted[i]) - cy(prev[prev.length - 1]) > medH * 0.8) rows.push([]);
+      rows[rows.length - 1].push(sorted[i]);
+    }
+
+    // groups within each row: split at x-gaps > 1.9 * option gap
+    const rowInfos = [];
+    for (const r of rows) {
+      r.sort((a, b) => cx(a) - cx(b));
+      const gaps = [];
+      for (let i = 1; i < r.length; i++) gaps.push(cx(r[i]) - cx(r[i - 1]));
+      const smallGaps = gaps.filter(g => g < medW * 2.2);
+      const optGap = smallGaps.length ? median(smallGaps) : medW * 1.5;
+      const groups = [[r[0]]];
+      for (let i = 1; i < r.length; i++) {
+        const g = groups[groups.length - 1];
+        if (cx(r[i]) - cx(g[g.length - 1]) > optGap * 1.9) groups.push([]);
+        groups[groups.length - 1].push(r[i]);
+      }
+      const complete = groups.filter(g => g.length === 4);
+      rowInfos.push({ boxes: r, groups, complete, optGap,
+                      cy: median(r.map(cy)) });
+    }
+
+    // block bands from complete groups (global; bands ~500px apart >> skew)
+    const gcs = [];
+    rowInfos.forEach(ri => ri.complete.forEach(g => gcs.push(median(g.map(cx)))));
+    if (gcs.length < 12) return { error: "too few complete option groups (" + gcs.length + ")" };
+    gcs.sort((a, b) => a - b);
+    const bands = [[gcs[0]]];
+    for (let i = 1; i < gcs.length; i++) {
+      const b = bands[bands.length - 1];
+      if (gcs[i] - b[b.length - 1] > medW * 3.5) bands.push([]);
+      bands[bands.length - 1].push(gcs[i]);
+    }
+    // a real answer block spans ~25 rows; instruction/example boxes form
+    // sparse phantom bands -> require a substantial member count
+    const bandCs = bands.filter(b => b.length >= 8).map(b => median(b));
+    if (bandCs.length !== 4)
+      return { error: "expected 4 answer blocks, found " + bandCs.length };
+
+    // global option-slot offsets per block (relative to band center)
+    const slotOffs = bandCs.map(() => [[], [], [], []]);
+    rowInfos.forEach(ri => ri.complete.forEach(g => {
+      const c = median(g.map(cx));
+      let bi = 0, best = 1e9;
+      bandCs.forEach((bc, k) => { const d = Math.abs(c - bc); if (d < best) { best = d; bi = k; } });
+      if (best < medW * 3) g.forEach((b, k) => slotOffs[bi][k].push(cx(b) - c));
+    }));
+    const offs = slotOffs.map(so => so.map(a => median(a)));
+
+    // valid answer rows: complete groups in >= 2 bands, OR (fallback for
+    // heavily marked rows whose boxes fragment) raw boxes in >= 3 bands
+    const isAnswerRow = ri => {
+      const hit = new Set();
+      ri.complete.forEach(g => {
+        const c = median(g.map(cx));
+        bandCs.forEach((bc, k) => { if (Math.abs(c - bc) < medW * 3) hit.add(k); });
+      });
+      if (hit.size >= 2) return true;
+      const byBox = bandCs.map(bc =>
+        ri.boxes.filter(b => Math.abs(cx(b) - bc) < ri.optGap * 2.4).length);
+      return byBox.filter(n => n >= 2).length >= 3;
+    };
+    let answerRows = rowInfos.filter(isAnswerRow);
+    if (answerRows.length >= 20 && answerRows.length < 25)
+      answerRows = reconstructRows(answerRows);
+    if (answerRows.length !== 25)
+      return { error: "expected 25 grid rows, found " + answerRows.length };
+
+    // ---- column-wise smooth x(y) fits from complete groups ----
+    // Perspective and curvature shift each option column differently, but
+    // each column's x varies SMOOTHLY with y. Complete groups give reliable
+    // (y, x) samples per column; fit a quadratic per column.
+    const colPts = bandCs.map(() => [[], [], [], []]);
+    answerRows.forEach(ri => {
+      ri.complete.forEach(g => {
+        const c = median(g.map(cx));
+        let bi = -1, best = medW * 3;
+        bandCs.forEach((bc, k) => { const d = Math.abs(c - bc); if (d < best) { best = d; bi = k; } });
+        if (bi >= 0) g.forEach((b, k) => colPts[bi][k].push([cy(b), cx(b)]));
+      });
+    });
+
+    function polyfit(pts, deg) { // least squares, returns coeff [c0,c1,c2]
+      deg = Math.min(deg, pts.length - 1);
+      const n = deg + 1;
+      const A = Array.from({ length: n }, () => new Float64Array(n));
+      const B = new Float64Array(n);
+      for (const [x, y] of pts) {
+        const pw = [1, x, x * x];
+        for (let i = 0; i < n; i++) {
+          B[i] += pw[i] * y;
+          for (let j = 0; j < n; j++) A[i][j] += pw[i] * pw[j];
+        }
+      }
+      for (let i = 0; i < n; i++) { // gaussian elimination
+        let p = i;
+        for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+        [A[i], A[p]] = [A[p], A[i]]; const t = B[i]; B[i] = B[p]; B[p] = t;
+        for (let r = i + 1; r < n; r++) {
+          const f = A[r][i] / A[i][i];
+          for (let c = i; c < n; c++) A[r][c] -= f * A[i][c];
+          B[r] -= f * B[i];
+        }
+      }
+      const co = new Float64Array(3);
+      for (let i = n - 1; i >= 0; i--) {
+        let s = B[i];
+        for (let c = i + 1; c < n; c++) s -= A[i][c] * co[c];
+        co[i] = s / A[i][i];
+      }
+      return co;
+    }
+    const colFit = colPts.map((block, bi) => block.map((pts, k) => {
+      if (pts.length >= 5) return polyfit(pts, 2);
+      if (pts.length >= 2) return polyfit(pts, 1);
+      return Float64Array.from([bandCs[bi] + offs[bi][k], 0, 0]);
+    }));
+    const evalFit = (co, y) => co[0] + co[1] * y + co[2] * y * y;
+
+    // ---- place slots: snap to detected box near the column fit ----
+    const slots = {};     // "q_opt" -> {x,y,w,h,det}
+    let synth = 0;
+    answerRows.forEach((ri, rowIdx) => {
+      for (let bi = 0; bi < 4; bi++) {
+        const q = bi * 25 + rowIdx + 1;
+        // row y within this block (row may tilt across the page)
+        const inBand = ri.boxes.filter(b => Math.abs(cx(b) - bandCs[bi]) < ri.optGap * 2.4);
+        const rowY = inBand.length ? median(inBand.map(cy)) : ri.cy;
+        for (let oi = 0; oi < 4; oi++) {
+          const ex = evalFit(colFit[bi][oi], rowY);
+          let bb = null, best = ri.optGap * 0.45;
+          for (const b of ri.boxes) {
+            const d = Math.abs(cx(b) - ex);
+            if (d < best && Math.abs(cy(b) - rowY) < medH * 1.2) { best = d; bb = b; }
+          }
+          // a heavy mark that spills outside the box merges with the outline
+          // and makes the detected box too big; then measure a normal-size box
+          // centred where the outline should be, not the swollen blob
+          if (bb && (bb.w > medW * 1.25 || bb.h > medH * 1.35)) {
+            slots[q + "_" + oi] = {
+              x: Math.round(ex - medW / 2), y: Math.round(rowY - medH / 2),
+              w: Math.round(medW), h: Math.round(medH), det: 2 };
+          } else if (bb) {
+            slots[q + "_" + oi] = { x: bb.x, y: bb.y, w: bb.w, h: bb.h, det: 1 };
+          } else {
+            synth++;
+            slots[q + "_" + oi] = {
+              x: Math.round(ex - medW / 2), y: Math.round(rowY - medH / 2),
+              w: Math.round(medW), h: Math.round(medH), det: 0 };
+          }
+        }
+      }
+    });
+    return { slots, rowsFound: answerRows.length, synthesized: synth,
+             medW, medH };
+  }
+
+  // ---------- classification ----------
+  function classify(val, w, h, slots, nQuestions) {
+    // 'val' keeps readable non-red ink dark while mapping red-family teacher
+    // ink to white. Flat-field: divide by a heavy local mean.
+    const ii = integral(val, w, h);
+    const R = 80;
+    const dark = roi => {
+      const sx = Math.round(roi.x + roi.w * 0.18), ex = Math.round(roi.x + roi.w * 0.82);
+      const sy = Math.round(roi.y + roi.h * 0.18), ey = Math.round(roi.y + roi.h * 0.82);
+      const m = boxMean(ii, w, h, sx, sy, ex, ey);
+      const cx = (sx + ex) >> 1, cyy = (sy + ey) >> 1;
+      const bg = Math.max(1, boxMean(ii, w, h, cx - R, cyy - R, cx + R, cyy + R));
+      return 255 - Math.min(255, Math.max(0, m / bg * 220));
+    };
+
+    const raw = [];
+    for (let q = 1; q <= nQuestions; q++) {
+      const s = [];
+      for (let oi = 0; oi < 4; oi++) s.push(dark(slots[q + "_" + oi]));
+      raw.push(s);
+    }
+    const flat = raw.flat();
+    const med = median(flat);
+    const mad = Math.max(1, median(flat.map(v => Math.abs(v - med))));
+    const tLow = med + Math.max(12, 3.6 * mad);
+    const tHigh = med + Math.max(25, 6 * mad);
+
+    // ---- "extra ink" safety net ----
+    // Average darkness misses a thin line, a tick, a traced outline or an
+    // over-written letter. So also compare each option's whole area (letter
+    // + box + margin) with what an EMPTY box looks like on this same page
+    // (the per-pixel median over all rows), and add up any new ink.
+    const GX = 40, GY = 30;
+    const patch = roi => {
+      const out = new Float32Array(GX * GY);
+      const cx = Math.round(roi.x + roi.w / 2), cyy = Math.round(roi.y + roi.h / 2);
+      const bg = Math.max(1, boxMean(ii, w, h, cx - R, cyy - R, cx + R, cyy + R));
+      for (let j = 0; j < GY; j++) {
+        const y = Math.min(h - 1, Math.max(0, Math.round(roi.y - 2.2 * roi.h + j / (GY - 1) * 3.8 * roi.h)));
+        for (let i = 0; i < GX; i++) {
+          const x = Math.min(w - 1, Math.max(0, Math.round(roi.x - 0.15 * roi.w + i / (GX - 1) * 1.3 * roi.w)));
+          out[j * GX + i] = Math.min(1, Math.max(0, 1 - val[y * w + x] / (bg * 1.04)));
+        }
+      }
+      return out;
+    };
+    const patches = [];
+    for (let q = 1; q <= nQuestions; q++)
+      patches.push([0, 1, 2, 3].map(oi => patch(slots[q + "_" + oi])));
+    const ink = patches.map(() => [0, 0, 0, 0]);
+    if (nQuestions >= 8) {   // need enough rows to know what "empty" looks like
+      const col = new Float32Array(nQuestions);
+      for (let oi = 0; oi < 4; oi++) {
+        const tmpl = new Float32Array(GX * GY);
+        for (let c = 0; c < GX * GY; c++) {
+          for (let q = 0; q < nQuestions; q++) col[q] = patches[q][oi][c];
+          tmpl[c] = median(col);
+        }
+        for (let q = 0; q < nQuestions; q++) {
+          let sum = 0;
+          const pp = patches[q][oi];
+          for (let c = 0; c < GX * GY; c++) { const d = pp[c] - tmpl[c] - 0.12; if (d > 0) sum += d; }
+          ink[q][oi] = sum;
+        }
+      }
+    }
+    const INK = 3;   // a short pencil line scores ~5-15; an empty box ~0-1
+
+    // Decide each row by comparing its boxes with EACH OTHER and with how
+    // dark this student's marks usually are (light-pencil students get a
+    // lower bar), instead of fixed page-wide cut-offs only.
+    const OPTS = ["A", "B", "C", "D"];
+    const ex = raw.map(s => s.map(v => v - med));          // excess over blank box
+    const tops = ex.map(e => Math.max(...e)).filter(v => v >= tLow - med);
+    const M = tops.length >= 5 ? median(tops) : tHigh - med; // typical mark
+    const T = Math.max(10, Math.min(tLow - med, 0.4 * M));    // "something is marked"
+    const results = [];
+    for (let q = 1; q <= nQuestions; q++) {
+      const e = ex[q - 1];
+      const ord = [0, 1, 2, 3].sort((a, b) => e[b] - e[a]);
+      const e1 = e[ord[0]], e2 = e[ord[1]];
+      let ans, conf = 0, flag = "", guess = "";
+      if (e1 < T) {                                  // nothing marked
+        ans = "X"; conf = Math.min(1, (T - e1) / T);
+        if (e1 >= 0.7 * T) { flag = "review"; guess = OPTS[ord[0]]; }
+      } else if (e2 < 0.5 * e1) {                    // one box clearly darkest
+        ans = OPTS[ord[0]]; conf = Math.min(1, (e1 - e2) / e1);
+        // still ask a human if the mark is very faint for this student,
+        // or a second box holds a real amount of ink (half-erased answer?)
+        if (e1 < 0.35 * M || (e2 >= 0.4 * M && e2 >= 0.3 * e1) ||
+            (e1 < 0.45 * M && e2 >= 0.35 * e1)) { flag = "review"; }
+      } else if (e2 >= 0.75 * e1 && e2 >= Math.max(T, 0.5 * M)) {  // two (or more) real marks
+        ans = OPTS.filter((_, i) => e[i] >= 0.75 * e1 && e[i] >= T).join("");
+        conf = Math.min(1, e2 / e1); flag = "review";
+      } else {                                       // close call -> human
+        ans = "?"; flag = "review"; guess = OPTS[ord[0]];
+      }
+      // safety net: never call a row blank when a box carries extra ink
+      // that the darkness test missed (thin line, tick, traced outline).
+      // (Not used on answered rows: rubbed-out pencil there is normal.)
+      const k = ink[q - 1];
+      const kOrd = [0, 1, 2, 3].sort((a, b) => k[b] - k[a]);
+      let faint = "";
+      if (ans === "X" && k[kOrd[0]] >= INK) {
+        // teachers usually call these blank (traced outline, line under the
+        // box), so suggest X but name the box with the faint ink
+        ans = "?"; flag = "review"; guess = "X"; faint = OPTS[kOrd[0]];
+      }
+      results.push({ q, answer: ans, guess, faint, scores: e.map(v => Math.round(v * 10) / 10),
+                     ink: k.map(v => Math.round(v * 10) / 10),
+                     confidence: Math.round(conf * 100) / 100, flag });
+    }
+    return { results, thresholds: { tLow: Math.round(tLow * 10) / 10,
+                                    tHigh: Math.round(tHigh * 10) / 10,
+                                    median: Math.round(med * 10) / 10 } };
+  }
+
+  // ---------- rotation helpers ----------
+  function rotate(data, w, h, times) { // times*90deg clockwise, RGB(A)
+    const ch = data.length / (w * h);
+    if (times % 4 === 0) return { data, w, h };
+    let src = data, sw = w, sh = h;
+    for (let t = 0; t < ((times % 4) + 4) % 4; t++) {
+      const dst = new Uint8Array(src.length);
+      for (let y = 0; y < sh; y++)
+        for (let x = 0; x < sw; x++) {
+          const nx = sh - 1 - y, ny = x;
+          for (let c = 0; c < ch; c++)
+            dst[(ny * sh + nx) * ch + c] = src[(y * sw + x) * ch + c];
+        }
+      src = dst; const tmp = sw; sw = sh; sh = tmp;
+    }
+    return { data: src, w: sw, h: sh };
+  }
+
+  // ---------- main ----------
+  function analyzeOnce(data, w, h, nQuestions, mode) {
+    const { gray, sat, val } = toGray(data, w, h);
+    const boxes = findOptionBoxes(gray, sat, w, h, mode);
+    const grid = assembleGrid(boxes, w, h);
+    if (grid.error) return { status: "grid_not_found", error: grid.error };
+    const { results, thresholds } = classify(val, w, h, grid.slots, nQuestions);
+    return { status: "ok", results, thresholds, maskMode: mode,
+             grid: { rowsFound: grid.rowsFound, synthesized: grid.synthesized,
+                     boxesDetected: boxes.length },
+             slots: grid.slots };
+  }
+
+  function analyze(data, w, h, opts) {
+    const nQ = (opts && opts.nQuestions) || 45;
+    let last = null;
+    const rots = (opts && opts.tryRotations) ? [0, 2, 1, 3] : [0];
+    for (const t of rots) {           // upright, 180, 90, 270
+      const r = rotate(data, w, h, t);
+      // "neutral" mask first (ignores red pen); "colored" fallback catches
+      // sheets whose grid itself is printed in color (pink nx26 original)
+      for (const mode of ["neutral", "colored"]) {
+        const res = analyzeOnce(r.data, r.w, r.h, nQ, mode);
+        if (res.status === "ok") {
+          res.rotation = t * 90; res.dims = { w: r.w, h: r.h };
+          return res;
+        }
+        last = res;
+      }
+    }
+    return last;
+  }
+
+  return { analyze, rotate, studentInkValue };
+})();
+
+if (typeof module !== "undefined") module.exports = MCEngine;
+
+</script>
+<script>
+"use strict";
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "assets/pdf.worker.min.js";
+
+const TARGET_W = 2100, MAX_Q = 100;
+let NQ = 45;
+const $ = id => document.getElementById(id);
+// ---------- brand (brand.js sets window.BRAND per site) ----------
+const BRAND = Object.assign({
+  id: "gtc", name: "GTC MC Scanner", title: "GTC MC Scanner", resultsTitle: "GTC MC Results",
+  logo: "", css: {}, features: {}
+}, window.BRAND || {});
+const FEAT = Object.assign({ dse: false, topics: false, typeIn: false, reports: false }, BRAND.features);
+(function applyBrand() {
+  for (const [k, v] of Object.entries(BRAND.css)) document.documentElement.style.setProperty(k, v);
+  document.title = BRAND.title;
+  $("brandName").textContent = BRAND.name;
+  $("footName").textContent = BRAND.name;
+  if (BRAND.logo) $("brandMark").innerHTML = `<img src="${BRAND.logo}" alt="" width="26" height="26" style="width:26px;height:26px">`;
+})();
+
+let sheets = [];      // {id,name,student,status,error,results,answers,over,canvas,slots,flags,crops}
+let ovIndex = -1;     // sheet shown in overlay
+let nextId = 1;
+const seenFiles = new Set();   // name|size|lastModified, to skip duplicate uploads
+const isScored = s => s.status === "ok" || s.status === "manual";
+
+// default date = today (local)
+(() => {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  $("examDate").value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+})();
+
+// ---------- input handling ----------
+$("drop").onclick = () => $("file").click();
+$("drop").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } };
+$("drop").ondragover = e => { e.preventDefault(); $("drop").classList.add("hover"); };
+$("drop").ondragleave = () => $("drop").classList.remove("hover");
+$("drop").ondrop = e => { e.preventDefault(); $("drop").classList.remove("hover");
+                          handleFiles(e.dataTransfer.files); };
+$("file").onchange = e => { handleFiles(e.target.files); e.target.value = ""; };
+
+async function handleFiles(fileList) {
+  const files = [...fileList];
+  if (!files.length) return;
+  $("prog").style.display = "block";
+  $("progbar").style.width = "0";
+  const pages = [];
+  let skipped = 0;
+  for (const f of files) {
+    const sig = `${f.name}|${f.size}|${f.lastModified}`;
+    if (seenFiles.has(sig)) { skipped++; continue; }
+    seenFiles.add(sig);
+    if (f.name.toLowerCase().endsWith(".pdf")) {
+      try {
+        const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+        for (let p = 1; p <= pdf.numPages; p++)
+          pages.push({ name: `${f.name} p${p}`, pdf, pageNo: p });
+      } catch (err) {
+        sheets.push(failedSheet(f.name, "read_failed", String(err), null));
+      }
+    } else pages.push({ name: f.name, file: f });
+  }
+  let done = 0;
+  for (const pg of pages) {
+    $("status").textContent = `Reading ${pg.name} … (${done + 1}/${pages.length})`;
+    let canvas = null;
+    try {
+      canvas = await renderPage(pg);
+      sheets.push(await analyzeCanvas(pg.name, canvas));
+    } catch (err) {
+      sheets.push(failedSheet(pg.name, "read_failed", String(err), canvas));
+    }
+    done++;
+    $("progbar").style.width = (100 * done / pages.length) + "%";
+    await new Promise(r => setTimeout(r, 0));
+  }
+  const bad = sheets.filter(s => s.status === "grid_not_found" || s.status === "read_failed").length;
+  let msg = `Done — ${sheets.length} sheet(s) loaded.`;
+  if (skipped) msg += ` ${skipped} file(s) skipped (already loaded).`;
+  if (bad) msg += ` ${bad} sheet(s) could not be read — see the red rows in Results.`;
+  $("status").textContent = msg;
+  render();
+}
+
+function failedSheet(name, status, error, canvas) {
+  return { id: nextId++, name, student: "", status, error, canvas,
+           answers: {}, over: {}, flags: [], crops: {} };
+}
+
+async function renderPage(pg) {
+  const canvas = document.createElement("canvas");
+  if (pg.pdf) {
+    const page = await pg.pdf.getPage(pg.pageNo);
+    const vp1 = page.getViewport({ scale: 1 });
+    const vp = page.getViewport({ scale: TARGET_W / vp1.width });
+    canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+  } else {
+    const bmp = await createImageBitmap(pg.file, { imageOrientation: "from-image" });
+    const scale = TARGET_W / bmp.width;
+    canvas.width = TARGET_W; canvas.height = Math.round(bmp.height * scale);
+    canvas.getContext("2d").drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  }
+  return canvas;
+}
+
+function rotatedCanvas(canvas, deg) {
+  if (!deg) return canvas;
+  const c = document.createElement("canvas");
+  if (deg === 180) { c.width = canvas.width; c.height = canvas.height; }
+  else { c.width = canvas.height; c.height = canvas.width; }
+  const ctx = c.getContext("2d");
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  ctx.drawImage(canvas, -canvas.width / 2, -canvas.height / 2);
+  return c;
+}
+
+function runEngine(canvas) {
+  const ctx = canvas.getContext("2d");
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return MCEngine.analyze(img.data, canvas.width, canvas.height,
+                          { nQuestions: NQ, tryRotations: true });
+}
+
+async function analyzeCanvas(name, canvas) {
+  const res = runEngine(canvas);
+  if (res.status !== "ok")
+    return failedSheet(name, "grid_not_found", res.error, canvas);
+  const s = { id: nextId++, name, student: "", over: {}, crops: {} };
+  applyEngineResult(s, res, rotatedCanvas(canvas, res.rotation || 0));
+  return s;
+}
+
+function applyEngineResult(s, res, canvas) {
+  const answers = {};
+  res.results.forEach(r => answers[r.q] = r.answer);
+  Object.assign(s, { status: "ok", error: "", results: res.results, answers,
+    flags: res.results.filter(r => r.flag), canvas, slots: res.slots,
+    grid: res.grid, crops: {} });
+  for (const q of Object.keys(s.over)) if (+q > NQ) delete s.over[q];
+}
+
+// re-read every scanned sheet after the number of questions changes
+async function rescanAll() {
+  const todo = sheets.filter(s => s.canvas && s.status !== "manual");
+  if (!todo.length) { render(); return; }
+  $("prog").style.display = "block";
+  let done = 0;
+  for (const s of todo) {
+    $("status").textContent = `Re-reading for ${NQ} questions … (${done + 1}/${todo.length})`;
+    await new Promise(r => setTimeout(r, 0));
+    const res = runEngine(s.canvas);
+    if (res.status === "ok") applyEngineResult(s, res, rotatedCanvas(s.canvas, res.rotation || 0));
+    else if (s.status !== "ok") { s.status = "grid_not_found"; s.error = res.error; }
+    done++;
+    $("progbar").style.width = (100 * done / todo.length) + "%";
+  }
+  $("status").textContent = `Done — re-read ${todo.length} sheet(s) for ${NQ} questions.`;
+  if (ovIndex >= 0) drawOverlay();
+  render();
+}
+
+$("nq").addEventListener("change", () => {
+  let n = parseInt($("nq").value, 10);
+  if (!(n >= 1)) n = 45;
+  n = Math.min(MAX_Q, n);
+  $("nq").value = n;
+  if (n === NQ) return;
+  NQ = n;
+  updateKeyInfo();
+  rescanAll();
+});
+
+$("clearAll").onclick = () => {
+  if (!confirm(`Remove all ${sheets.length} sheet(s) and your manual decisions?`)) return;
+  sheets = []; seenFiles.clear(); closeOverlay();
+  if (typeof closeReport === "function") closeReport();
+  $("status").textContent = ""; $("prog").style.display = "none";
+  render();
+};
+
+window.addEventListener("beforeunload", e => {
+  if (sheets.length) { e.preventDefault(); e.returnValue = ""; }
+});
+
+// ---------- effective answers / overrides ----------
+function eff(s, q) { return (q in s.over) ? s.over[q] : (s.answers[q] || ""); }
+function setOverride(id, q, val) {
+  const s = sheets.find(x => x.id === id);
+  if (!s) return;
+  if (val === null) delete s.over[q];
+  else s.over[q] = val;
+  render();
+  if (ovIndex === id) drawOverlay();
+}
+
+// ---------- key / scoring ----------
+// Accepts "ABDAC…", "A B D…", or numbered text such as "1. A  2. D …"
+// (copied from an answer-key PDF; the numbers may be in any order).
+function parseKey(text) {
+  const t = (text || "").toUpperCase();
+  const out = { letters: [], bad: [], missing: [], numbered: false };
+  if (!t.trim()) return out;
+  const pairs = [...t.matchAll(/(?<![\d.])(\d{1,3})\s*[.)、:：]?\s*\(?([A-D*])\)?(?![A-Z])/g)];
+  if (pairs.length >= 5) {
+    out.numbered = true;
+    for (const m of pairs) {
+      const q = +m[1];
+      if (q >= 1 && q <= MAX_Q && !out.letters[q - 1]) out.letters[q - 1] = m[2];
+    }
+    for (let i = 0; i < out.letters.length; i++) if (!out.letters[i]) out.missing.push(i + 1);
+    return out;
+  }
+  let pos = 0;
+  for (const ch of t.replace(/[\s,;.\-|\/()\d]/g, "")) {
+    pos++;
+    if ("ABCD*".includes(ch)) out.letters.push(ch);
+    else out.bad.push({ ch, pos });
+  }
+  return out;
+}
+function getKey() {
+  const p = parseKey($("key").value);
+  if (p.bad.length || p.letters.length < NQ) return null;
+  const key = {};
+  for (let q = 1; q <= NQ; q++) {
+    if (!p.letters[q - 1]) return null;
+    key[q] = p.letters[q - 1];
+  }
+  return key;
+}
+function updateKeyInfo() {
+  const p = parseKey($("key").value);
+  const el = $("keyInfo");
+  const n = p.letters.filter(Boolean).length;
+  if (!$("key").value.trim()) { el.innerHTML = `<span class="note">No key yet — answers will be read but not scored.</span>`; return; }
+  if (p.bad.length) {
+    const b = p.bad[0];
+    el.innerHTML = `<span class="bad-msg">"${esc(b.ch)}" at letter ${b.pos} is not A–D.</span> <span class="note">Fix it — otherwise every answer after it shifts.</span>`;
+    return;
+  }
+  const setBtn = cnt => ` <button class="sec small" onclick="setNQ(${cnt})">Set questions to ${cnt}</button>`;
+  if (p.missing.length) {
+    el.innerHTML = `<span class="warn-msg">Missing answers for Q${p.missing.slice(0, 10).join(", Q")}${p.missing.length > 10 ? " …" : ""}.</span>`;
+    return;
+  }
+  if (n < NQ) {
+    el.innerHTML = `<span class="warn-msg">${n} / ${NQ} answers — need ${NQ - n} more.</span>` + (n ? setBtn(n) : "");
+    return;
+  }
+  if (n > NQ) {
+    el.innerHTML = `<span class="warn-msg">${n} answers found, but the paper is set to ${NQ} questions — only the first ${NQ} are used.</span>` + (n <= MAX_Q ? setBtn(n) : "");
+    return;
+  }
+  const cx = [...cancelledSet()].sort((a, b) => a - b);
+  el.innerHTML = `<span class="ok-msg"><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>${n} / ${NQ} answers. Scoring is on.</span>` +
+    (cx.length ? ` <span class="note">Cancelled: Q${cx.join(", Q")} — ${giveMark() ? `everyone gets the mark (out of ${NQ})` : `not counted (out of ${NQ - cx.length})`}.</span>` : "");
+}
+function setNQ(n) { $("nq").value = n; $("nq").dispatchEvent(new Event("change")); }
+
+// cancelled questions: from the box ("37, 41") or "*" in the key
+function cancelledSet() {
+  const set = new Set();
+  for (const m of ($("cancelQ").value || "").matchAll(/\d+/g)) {
+    const q = +m[0];
+    if (q >= 1 && q <= NQ) set.add(q);
+  }
+  parseKey($("key").value).letters.forEach((l, i) => { if (l === "*" && i < NQ) set.add(i + 1); });
+  return set;
+}
+const giveMark = () => $("cancelMode").value === "give";
+function fullMark() { return giveMark() ? NQ : NQ - cancelledSet().size; }
+function pctOf(sc) { const fm = fullMark(); return fm ? 100 * sc / fm : 0; }
+function scoreOf(s, key, cx = cancelledSet()) {
+  let sc = 0;
+  for (let q = 1; q <= NQ; q++) {
+    if (cx.has(q)) { if (giveMark()) sc++; continue; }
+    if (eff(s, q) === key[q]) sc++;
+  }
+  return sc;
+}
+$("cancelQ").addEventListener("input", () => onKeyChange());
+$("cancelMode").addEventListener("change", () => onKeyChange());
+
+// load key from a PDF or text file (button or drop on the key box)
+$("keyFileBtn").onclick = () => $("keyFile").click();
+$("keyFile").onchange = e => { if (e.target.files[0]) loadKeyFile(e.target.files[0]); e.target.value = ""; };
+$("key").addEventListener("dragover", e => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); $("key").classList.add("hover"); } });
+$("key").addEventListener("dragleave", () => $("key").classList.remove("hover"));
+$("key").addEventListener("drop", e => {
+  if (!e.dataTransfer.files.length) return;
+  e.preventDefault(); $("key").classList.remove("hover");
+  loadKeyFile(e.dataTransfer.files[0]);
+});
+async function loadKeyFile(f) {
+  let text = "";
+  try {
+    if (f.name.toLowerCase().endsWith(".pdf")) {
+      const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer() }).promise;
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const tc = await (await pdf.getPage(p)).getTextContent();
+        text += tc.items.map(it => it.str + (it.hasEOL ? "\n" : " ")).join("") + "\n";
+      }
+    } else if (f.type.startsWith("image/")) {
+      $("keyInfo").innerHTML = `<span class="bad-msg">Photos of a key can't be read here — type or paste the letters instead.</span>`;
+      return;
+    } else text = await f.text();
+  } catch (err) {
+    $("keyInfo").innerHTML = `<span class="bad-msg">Couldn't read ${esc(f.name)}.</span>`;
+    return;
+  }
+  const p = parseKey(text);
+  const n = p.letters.filter(Boolean).length;
+  if (p.numbered && n) {
+    // show the key as clean letters in groups of 5 so it can be checked by eye
+    $("key").value = p.letters.map(l => l || "?").join("").replace(/(.{5})(?=.)/g, "$1 ");
+  } else {
+    $("key").value = text.trim();
+  }
+  onKeyChange();
+}
+function onKeyChange() { updateKeyInfo(); if (sheets.length) render(); }
+$("key").addEventListener("input", onKeyChange);
+
+// ---------- manual entry for unreadable sheets ----------
+function applyManual(id) {
+  const s = sheets.find(x => x.id === id);
+  const inp = document.getElementById("man" + id);
+  const msg = document.getElementById("manmsg" + id);
+  const raw = (inp.value || "").toUpperCase().replace(/[\s,;.\-|\/\d]/g, "");
+  const badCh = [...raw].find(c => !"ABCDX?".includes(c));
+  if (badCh) { msg.textContent = `"${badCh}" is not A, B, C, D or X.`; return; }
+  if (raw.length !== NQ) { msg.textContent = `${raw.length} / ${NQ} answers typed.`; return; }
+  s.manualDraft = inp.value;
+  s.status = "manual";
+  s.answers = {}; s.over = {}; s.flags = [];
+  s.results = [];
+  for (let q = 1; q <= NQ; q++) { s.answers[q] = raw[q - 1]; s.results.push({ q, answer: raw[q - 1] }); }
+  render();
+}
+function retype(id) {
+  const s = sheets.find(x => x.id === id);
+  if (!s.manualDraft) s.manualDraft = [...Array(NQ)].map((_, i) => eff(s, i + 1) || "X").join("");
+  s.status = "grid_not_found";
+  s.error = "Typed by hand.";
+  render();
+  const inp = document.getElementById("man" + id);
+  if (inp) inp.focus();
+}
+
+// ---------- rendering ----------
+function displayOrder() {
+  const key = getKey();
+  const by = $("sortBy").value;
+  const list = [...sheets];
+  if (by === "name")
+    list.sort((a, b) => (a.student || "~").localeCompare(b.student || "~", undefined, { numeric: true }));
+  else if ((by === "scoreDesc" || by === "scoreAsc") && key) {
+    const sc = s => isScored(s) ? scoreOf(s, key) : -1;
+    list.sort((a, b) => by === "scoreDesc" ? sc(b) - sc(a) : sc(a) - sc(b));
+  }
+  return list;
+}
+$("sortBy").onchange = () => render();
+
+// "Page 7" when every sheet comes from one PDF; otherwise the full name
+function shortName(s) {
+  if (s.typed) return "Typed in";
+  const files = new Set(sheets.filter(x => !x.typed).map(x => x.name.replace(/ p\d+$/, "")));
+  const m = s.name.match(/ p(\d+)$/);
+  return files.size === 1 && m ? `Page ${m[1]}` : s.name;
+}
+
+const STATUS_LABEL = { ok: "ok", manual: "typed", grid_not_found: "not read", read_failed: "file error" };
+function friendlyError(s) {
+  if (s.status === "read_failed")
+    return "Couldn't open this file. Try exporting it again as PDF or JPG.";
+  return "Couldn't find the answer grid. Check that this page is the MC answer sheet, the whole grid is in the picture, and the photo is flat, sharp and not too dark.";
+}
+
+function render() {
+  const key = getKey();
+  const ok = sheets.filter(isScored);
+  $("resultsCard").style.display = sheets.length ? "block" : "none";
+  $("clearAll").style.display = sheets.length ? "inline-block" : "none";
+  const order = displayOrder();
+  let html = `<table><tr><th class="stick" style="min-width:34px">#</th><th class="stick2" style="left:34px">Student</th><th>Sheet</th><th>Status</th>`;
+  const cx = cancelledSet();
+  for (let q = 1; q <= NQ; q++) html += cx.has(q) ? `<th class="cx" title="Cancelled">${q}</th>` : `<th>${q}</th>`;
+  if (key) html += "<th>score</th><th>%</th>";
+  html += "<th>check</th><th></th></tr>";
+  order.forEach((s, n) => {
+    const nameCell = `<td class="stick2 name" style="left:34px"><input type="text" value="${esc(s.student || "")}" placeholder="name…" data-id="${s.id}" aria-label="Student name for ${esc(s.name)}"></td>`;
+    html += `<tr><td class="stick" style="min-width:34px">${n + 1}</td>${nameCell}<td style="text-align:left" title="${esc(s.name)}">${esc(shortName(s))}</td>`;
+    const stCls = s.status === "ok" ? "st-ok" : s.status === "manual" ? "st-man" : "st-bad";
+    html += `<td class="${stCls}">${STATUS_LABEL[s.status] || s.status}</td>`;
+    if (!isScored(s)) {
+      const draft = s.manualDraft || "";
+      html += `<td colspan="${NQ + (key ? 2 : 0) + 2}" class="failcell">
+        <span class="msg">${s.error === "Typed by hand." ? "Edit the typed answers:" : esc(friendlyError(s))}</span>
+        ${s.canvas ? ` <a href="#" onclick="showOverlay(${s.id});return false">view page</a>` : ""}
+        ${s.error && s.error !== "Typed by hand." ? `<div class="detail">${esc(s.error)}</div>` : ""}
+        <div class="manrow">Type answers by hand:
+          <input type="text" id="man${s.id}" value="${esc(draft)}" placeholder="${NQ} letters, e.g. ABDAC…  (X = blank)"
+                 onkeydown="if(event.key==='Enter')applyManual(${s.id})">
+          <button class="small" onclick="applyManual(${s.id})">Use these</button>
+          <span class="note" id="manmsg${s.id}"></span></div></td></tr>`;
+      return;
+    }
+    for (let q = 1; q <= NQ; q++) {
+      const a = eff(s, q);
+      let cls = a === "X" ? "ansX" : a === "?" ? "ansQ" : a.length > 1 ? "ansM" : "";
+      if (q in s.over) cls += " over";
+      if (cx.has(q)) cls += " cx";
+      else if (key && a.length === 1 && "ABCD".includes(a))
+        cls += a === key[q] ? " right" : " wrong";
+      html += `<td class="ans ${cls}" data-id="${s.id}" data-q="${q}">${esc(a)}</td>`;
+    }
+    if (key) {
+      const sc = scoreOf(s, key, cx);
+      html += `<td><b>${sc}</b></td><td>${pctOf(sc).toFixed(0)}</td>`;
+    }
+    const unresolved = (s.flags || []).filter(f => !(f.q in s.over)).length;
+    html += `<td>${unresolved || ""}</td>`;
+    const repLink = FEAT.reports && key ? ` · <a href="#" onclick="showReport(${s.id});return false">report</a>` : "";
+    html += s.status === "manual"
+      ? `<td><a href="#" onclick="retype(${s.id});return false">edit</a>${repLink}</td></tr>`
+      : `<td><a href="#" onclick="showOverlay(${s.id});return false">view</a>${repLink}</td></tr>`;
+  });
+  if (key && ok.length) {
+    html += `<tr class="correctrate"><td class="stick"></td><td class="stick2" style="left:34px;text-align:left"><b>correct %</b></td><td></td><td></td>`;
+    for (let q = 1; q <= NQ; q++) {
+      if (cx.has(q)) { html += `<td class="cx">—</td>`; continue; }
+      const n = ok.filter(s => eff(s, q) === key[q]).length;
+      const pct = Math.round(100 * n / ok.length);
+      html += `<td style="background:${pct < 50 ? '#fbdede' : pct < 75 ? '#fdf0d8' : '#e3f6ea'}">${pct}</td>`;
+    }
+    html += "<td></td><td></td><td></td><td></td></tr>";
+  }
+  html += "</table>";
+  $("resultsTable").innerHTML = html;
+  $("resultsTable").querySelectorAll("td.name input").forEach(inp => {
+    inp.addEventListener("input", () => {
+      const s = sheets.find(x => x.id === +inp.dataset.id);
+      if (s) s.student = inp.value.trim();
+    });
+    inp.addEventListener("keydown", e => { // Enter = next student's box
+      if (e.key !== "Enter") return;
+      const all = [...$("resultsTable").querySelectorAll("td.name input")];
+      const nx = all[all.indexOf(inp) + 1];
+      if (nx) nx.focus(); else inp.blur();
+    });
+    inp.addEventListener("change", () => { if ($("sortBy").value === "name") render(); });
+  });
+
+  $("resultsTable").querySelectorAll("td.ans").forEach(td =>
+    td.addEventListener("click", ev => { ev.stopPropagation(); openPicker(td); }));
+
+  // review section
+  const flagged = [];
+  sheets.forEach(s => { if (s.status === "ok") (s.flags || []).forEach(f => flagged.push([s, f])); });
+  $("reviewCard").style.display = flagged.length ? "block" : "none";
+  const unresolved = flagged.filter(([s, f]) => !(f.q in s.over)).length;
+  $("reviewCount").textContent = unresolved ? `${unresolved} of ${flagged.length} to decide` : `All ${flagged.length} decided`;
+  $("reviewCount").classList.toggle("done", !unresolved);
+  $("reviewList").innerHTML = "";
+  for (const [s, f] of flagged) {
+    const done = f.q in s.over;
+    const div = document.createElement("div");
+    div.className = "flagbox" + (done ? " resolved" : "");
+    const who = s.student ? `${esc(s.student)} · ${esc(shortName(s))}` : esc(shortName(s));
+    const guessTxt = f.faint ? ` — looks blank, but has faint ink near <b>${f.faint}</b>`
+      : f.guess && f.answer !== f.guess ? ` — looks most like <b>${f.guess}</b>` : "";
+    div.innerHTML = `<b>${who} · Q${f.q}</b><span class="note" style="font-family:var(--font);font-size:13px">Read as <b>${esc(f.answer)}</b>${guessTxt}</span>`;
+    const judge = document.createElement("div");
+    judge.className = "judge";
+    judge.append("Final answer");
+    for (const v of ["A", "B", "C", "D", "X"]) {
+      const b = document.createElement("button");
+      b.textContent = v;
+      if (done && s.over[f.q] === v) b.className = "sel";
+      else if (!done && v === (f.guess || f.answer)) b.className = "guess";
+      b.onclick = () => setOverride(s.id, f.q, v);
+      judge.appendChild(b);
+    }
+    // "keep" only makes sense for a real reading (a blank or a double mark), not for "?"
+    if (done || f.answer !== "?") {
+      const keep = document.createElement("button");
+      keep.innerHTML = done ? `<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg>Undo` : `Keep ${esc(f.answer)}`;
+      keep.className = "dim";
+      keep.onclick = () => setOverride(s.id, f.q, done ? null : f.answer);
+      judge.appendChild(keep);
+    }
+    div.appendChild(judge);
+    const crop = cropRow(s, f.q);
+    if (crop) div.appendChild(crop);
+    $("reviewList").appendChild(div);
+  }
+  afterRender();
+}
+
+function afterRender() { if (typeof refreshReport === "function") refreshReport(); }
+
+function cropRow(s, q) {
+  if (!s.canvas || !s.slots) return null;
+  if (!s.crops[q]) {  // build each crop once; re-renders reuse it
+    const boxes = [0, 1, 2, 3].map(oi => s.slots[q + "_" + oi]);
+    const x0 = Math.max(0, Math.min(...boxes.map(b => b.x)) - 120);
+    const x1 = Math.min(s.canvas.width, Math.max(...boxes.map(b => b.x + b.w)) + 40);
+    const y0 = Math.max(0, Math.min(...boxes.map(b => b.y)) - 30);
+    const y1 = Math.min(s.canvas.height, Math.max(...boxes.map(b => b.y + b.h)) + 16);
+    const c = document.createElement("canvas");
+    const sc = 2;
+    c.width = (x1 - x0) * sc; c.height = (y1 - y0) * sc;
+    const ctx = c.getContext("2d");
+    // smooth zoom, so the crop looks like the scan (no blocky pixels)
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(s.canvas, x0, y0, x1 - x0, y1 - y0, 0, 0, c.width, c.height);
+    ctx.strokeStyle = "rgba(220,40,40,.85)"; ctx.lineWidth = 2;
+    boxes.forEach(b => ctx.strokeRect((b.x - x0) * sc, (b.y - y0) * sc, b.w * sc, b.h * sc));
+    s.crops[q] = c.toDataURL("image/png");
+  }
+  const img = new Image();
+  img.src = s.crops[q];
+  img.alt = `Q${q} answer boxes`;
+  return img;
+}
+
+// ---------- click a table cell to change one answer ----------
+function openPicker(td) {
+  const id = +td.dataset.id, q = +td.dataset.q;
+  const s = sheets.find(x => x.id === id);
+  if (!s) return;
+  const cur = eff(s, q), pk = $("picker");
+  const who = s.student || shortName(s);
+  pk.innerHTML = `<div class="ttl">${esc(who)} — Q${q} (read as ${esc(s.answers[q] || "")})</div><div class="row"></div>`;
+  const row = pk.querySelector(".row");
+  for (const v of ["A", "B", "C", "D", "X"]) {
+    const b = document.createElement("button");
+    b.textContent = v;
+    if (cur === v) b.className = "sel";
+    b.onclick = () => { closePicker(); setOverride(id, q, v === s.answers[q] ? null : v); };
+    row.appendChild(b);
+  }
+  if (q in s.over) {
+    const b = document.createElement("button");
+    b.innerHTML = `<svg class="icon" aria-hidden="true"><use href="#i-undo"/></svg>Undo`; b.className = "dim";
+    b.onclick = () => { closePicker(); setOverride(id, q, null); };
+    row.appendChild(b);
+  }
+  if (s.canvas && s.slots) {
+    const crop = cropRow(s, q);
+    crop.style.cssText = "display:block;max-width:340px;margin-top:6px;border:1px solid var(--bd)";
+    pk.appendChild(crop);
+  }
+  pk.style.display = "block";
+  const r = td.getBoundingClientRect();
+  const left = Math.min(window.scrollX + r.left, window.scrollX + document.documentElement.clientWidth - pk.offsetWidth - 8);
+  pk.style.left = Math.max(8, left) + "px";
+  pk.style.top = (window.scrollY + r.bottom + 4) + "px";
+}
+function closePicker() { $("picker").style.display = "none"; }
+document.addEventListener("click", ev => { if (!$("picker").contains(ev.target)) closePicker(); });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") closePicker(); });
+
+// ---------- interactive overlay ----------
+function showOverlay(id) {
+  const s = sheets.find(x => x.id === id);
+  if (!s) return;
+  ovIndex = id;
+  $("overlayName").textContent = s.student ? `${s.student} · ${shortName(s)}` : shortName(s);
+  $("ovNote").style.display = s.slots && s.status === "ok" ? "block" : "none";
+  $("overlayCard").style.display = "block";
+  drawOverlay();
+  $("overlayCard").scrollIntoView({ behavior: "smooth" });
+}
+function closeOverlay() { $("overlayCard").style.display = "none"; ovIndex = -1; }
+
+function drawOverlay() {
+  const s = sheets.find(x => x.id === ovIndex);
+  if (!s || !s.canvas) return;
+  const c = $("ovCanvas");
+  c.width = s.canvas.width; c.height = s.canvas.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(s.canvas, 0, 0);
+  if (!s.slots || s.status !== "ok") return;   // unread page: picture only
+  ctx.lineWidth = 3; ctx.font = "bold 26px sans-serif";
+  s.results.forEach(r => {
+    const a = eff(s, r.q);
+    const manual = r.q in s.over;
+    for (let oi = 0; oi < 4; oi++) {
+      const b = s.slots[r.q + "_" + oi];
+      const hit = a !== "X" && a !== "?" && a.includes("ABCD"[oi]);
+      ctx.strokeStyle = hit ? (manual ? "rgba(217,119,6,.95)" : "rgba(0,170,0,.9)")
+                            : "rgba(150,150,150,.55)";
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+    }
+    const b = s.slots[r.q + "_0"];
+    ctx.fillStyle = manual ? "#d97706" :
+      a === "?" ? "#e11d48" : a === "X" ? "#2563eb" : "#0a7a2f";
+    ctx.fillText(a, b.x - 105, b.y + b.h);
+  });
+}
+
+$("ovCanvas").addEventListener("click", ev => {
+  if (ovIndex < 0) return;
+  const s = sheets.find(x => x.id === ovIndex);
+  if (!s || !s.slots || s.status !== "ok") return;
+  const c = $("ovCanvas");
+  const r = c.getBoundingClientRect();
+  const x = (ev.clientX - r.left) * (c.width / r.width);
+  const y = (ev.clientY - r.top) * (c.height / r.height);
+  for (const res of s.results) {
+    for (let oi = 0; oi < 4; oi++) {
+      const b = s.slots[res.q + "_" + oi];
+      if (x >= b.x - 6 && x <= b.x + b.w + 6 && y >= b.y - 8 && y <= b.y + b.h + 8) {
+        const L = "ABCD"[oi];
+        setOverride(s.id, res.q, eff(s, res.q) === L ? "X" : L);
+        return;
+      }
+    }
+  }
+});
+
+// ---------- exports ----------
+function fileStem() {
+  const n = ($("examName").value || "mc_results").trim().replace(/[^\w一-鿿-]+/g, "_");
+  return n || "mc_results";
+}
+function median(a) {
+  if (!a.length) return 0;
+  const s = [...a].sort((x, y) => x - y), m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+function quantile(sorted, p) {
+  if (!sorted.length) return 0;
+  const idx = (sorted.length - 1) * p, lo = Math.floor(idx);
+  return lo === idx ? sorted[lo] : sorted[lo] + (sorted[lo + 1] - sorted[lo]) * (idx - lo);
+}
+function esc(t) {
+  return String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+$("dlCsv").onclick = () => {
+  const key = getKey();
+  const head = ["student", "sheet", "status"];
+  for (let q = 1; q <= NQ; q++) head.push("Q" + q);
+  if (key) head.push("score", "pct");
+  head.push("manual_overrides");
+  const rows = [head];
+  for (const s of displayOrder()) {
+    const r = [s.student || "", s.name, STATUS_LABEL[s.status] || s.status];
+    for (let q = 1; q <= NQ; q++) r.push(isScored(s) ? eff(s, q) : "");
+    if (key) {
+      const sc = isScored(s) ? scoreOf(s, key) : "";
+      r.push(sc, sc === "" ? "" : Math.round(10 * pctOf(sc)) / 10);
+    }
+    r.push(Object.keys(s.over || {}).length);
+    rows.push(r);
+  }
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  download(new Blob(["﻿" + csv], { type: "text/csv" }), fileStem() + ".csv");
+};
+
+$("dlXlsx").onclick = async () => {
+  const key = getKey();
+  const order = displayOrder();
+  const ok = order.filter(isScored);
+  const wb = new ExcelJS.Workbook();
+  const B = { style: "thin", color: { argb: "FFD9DEE8" } };
+  const borders = { top: B, left: B, bottom: B, right: B };
+  const headFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F5597" } };
+  const headFont = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+  const baseFont = { name: "Calibri", size: 11 };
+  const QC = 3;   // first answer column is QC + 1 (after #, Student, Sheet)
+
+  // ---- Results sheet ----
+  const ws = wb.addWorksheet("Results", { views: [{ state: "frozen", xSplit: 2, ySplit: 5 }] });
+  ws.addRow([($("examName").value || BRAND.resultsTitle)]).font = { name: "Calibri", size: 16, bold: true };
+  ws.addRow([`Class: ${$("examClass").value || "-"}    Date: ${$("examDate").value || "-"}    Sheets: ${sheets.length}`]).font = { name: "Calibri", size: 11, color: { argb: "FF666666" } };
+  ws.addRow([]);
+  ws.addRow(["X = blank · two letters = double-marked · ? = unresolved · orange = manual decision · grey = cancelled question"]).font = { name: "Calibri", size: 9, italic: true, color: { argb: "FF999999" } };
+  const hdr = ["#", "Student", "Sheet"];
+  for (let q = 1; q <= NQ; q++) hdr.push(q);
+  if (key) hdr.push("Score", "%");
+  hdr.push("Manual");
+  const cxs = cancelledSet();
+  const greyFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE4E7E6" } };
+  const hrow = ws.addRow(hdr);
+  hrow.eachCell(c => { c.fill = headFill; c.font = headFont; c.border = borders;
+                       c.alignment = { horizontal: "center" }; });
+  cxs.forEach(q => { const c = hrow.getCell(QC + q); c.fill = { ...greyFill, fgColor: { argb: "FF9AA5A0" } }; c.note = "Cancelled"; });
+  order.forEach((s, i) => {
+    const vals = [i + 1, s.student || "", s.name];
+    for (let q = 1; q <= NQ; q++) vals.push(isScored(s) ? eff(s, q) : "");
+    if (key) {
+      const sc = isScored(s) ? scoreOf(s, key) : "";
+      vals.push(sc, sc === "" ? "" : Math.round(10 * pctOf(sc)) / 10);
+    }
+    vals.push(Object.keys(s.over || {}).length || "");
+    const row = ws.addRow(vals);
+    row.eachCell({ includeEmpty: true }, (c, col) => {
+      c.font = baseFont; c.border = borders;
+      c.alignment = { horizontal: col === 2 || col === 3 ? "left" : "center" };
+    });
+    if (!isScored(s)) row.getCell(3).font = { ...baseFont, color: { argb: "FFCC0000" } };
+    for (let q = 1; q <= NQ; q++) {
+      const c = row.getCell(QC + q);
+      const a = String(c.value || "");
+      if (cxs.has(q)) {
+        c.fill = greyFill; c.font = { ...baseFont, color: { argb: "FF9AA5A0" }, strike: true };
+        continue;
+      }
+      if (q in (s.over || {}))
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE9CC" } };
+      else if (a === "?" || (a.length > 1 && a !== "X"))
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFD6DC" } };
+      else if (key && a && a !== key[q])
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFBEAEA" } };
+      else if (key && a === key[q])
+        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE9F7EC" } };
+      if (a === "X") c.font = { ...baseFont, color: { argb: "FFAAAAAA" } };
+    }
+  });
+  ws.getColumn(1).width = 4; ws.getColumn(2).width = 20; ws.getColumn(3).width = 24;
+  for (let q = 1; q <= NQ; q++) ws.getColumn(QC + q).width = 3.6;
+  if (key) { ws.getColumn(QC + NQ + 1).width = 7; ws.getColumn(QC + NQ + 2).width = 6; }
+  ws.getColumn(QC + NQ + (key ? 3 : 1)).width = 8;
+
+  if (key && ok.length) {
+    // ---- Item analysis ----
+    const wa = wb.addWorksheet("ItemAnalysis", { views: [{ state: "frozen", ySplit: 1 }] });
+    const scores = ok.map(s => scoreOf(s, key));
+    const rank = [...ok.keys()].sort((a, b) => scores[b] - scores[a]);
+    const nG = Math.max(1, Math.round(ok.length * 0.27));
+    const topSet = new Set(rank.slice(0, nG)), botSet = new Set(rank.slice(-nG));
+    const h2 = wa.addRow(["Q", "Key", "Correct", "N", "Correct %", "Discrimination",
+                          "A", "B", "C", "D", "Blank X", "Unclear ?", "Double"]);
+    h2.eachCell(c => { c.fill = headFill; c.font = headFont; c.border = borders;
+                       c.alignment = { horizontal: "center" }; });
+    for (let q = 1; q <= NQ; q++) {
+      if (cxs.has(q)) {
+        const row = wa.addRow([q, "cancelled"]);
+        row.eachCell(c => { c.font = { ...baseFont, color: { argb: "FF9AA5A0" } }; c.border = borders;
+                            c.alignment = { horizontal: "center" }; });
+        continue;
+      }
+      const dist = { A: 0, B: 0, C: 0, D: 0, X: 0, "?": 0, m: 0 };
+      let corr = 0, topC = 0, botC = 0;
+      ok.forEach((s, j) => {
+        const a = eff(s, q);
+        if (a in dist) dist[a]++; else if (a.length > 1) dist.m++;
+        if (a === key[q]) { corr++; if (topSet.has(j)) topC++; if (botSet.has(j)) botC++; }
+      });
+      const disc = Math.round(100 * (topC - botC) / nG) / 100;
+      const row = wa.addRow([q, key[q], corr, ok.length,
+        Math.round(1000 * corr / ok.length) / 10, disc,
+        dist.A, dist.B, dist.C, dist.D, dist.X, dist["?"], dist.m]);
+      row.eachCell(c => { c.font = baseFont; c.border = borders;
+                          c.alignment = { horizontal: "center" }; });
+      const pc = row.getCell(5);
+      const v = pc.value;
+      pc.fill = { type: "pattern", pattern: "solid",
+        fgColor: { argb: v < 50 ? "FFFFD6DC" : v < 75 ? "FFFFF2CC" : "FFE9F7EC" } };
+      // bold the key's option column
+      row.getCell(6 + "ABCD".indexOf(key[q]) + 1).font = { ...baseFont, bold: true };
+    }
+    wa.columns.forEach((c, i) => c.width = i === 5 ? 14 : 9);
+
+    // ---- Summary ----
+    const sm = wb.addWorksheet("Summary");
+    const sorted = [...scores].sort((a, b) => a - b);
+    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const sd = scores.length > 1 ? Math.sqrt(scores.map(v => (v - mean) ** 2)
+              .reduce((a, b) => a + b, 0) / (scores.length - 1)) : 0;
+    sm.addRow([($("examName").value || BRAND.resultsTitle) + " — Summary"]).font = { name: "Calibri", size: 14, bold: true };
+    sm.addRow([]);
+    const pairs = [
+      ["Students (scored sheets)", ok.length],
+      ["Full mark", fullMark()],
+      ["Cancelled questions", cxs.size ? [...cxs].sort((a, b) => a - b).map(q => "Q" + q).join(", ") +
+        (giveMark() ? " (everyone gets the mark)" : " (not counted)") : "none"],
+      ["Mean", Math.round(mean * 100) / 100],
+      ["Median", median(scores)],
+      ["Standard deviation", Math.round(sd * 100) / 100],
+      ["Highest", Math.max(...scores)],
+      ["Upper quartile (Q3)", Math.round(quantile(sorted, .75) * 10) / 10],
+      ["Lower quartile (Q1)", Math.round(quantile(sorted, .25) * 10) / 10],
+      ["Lowest", Math.min(...scores)],
+      ["Hardest questions (lowest correct %)",
+        [...Array(NQ)].map((_, i) => i + 1).filter(q => !cxs.has(q))
+          .map(q => [q, ok.filter(s => eff(s, q) === key[q]).length])
+          .sort((a, b) => a[1] - b[1]).slice(0, 5).map(([q]) => "Q" + q).join(", ")],
+      ["Unresolved ? remaining",
+        ok.reduce((n, s) => n + [...Array(NQ)].filter((_, i) => eff(s, i + 1) === "?").length, 0)],
+    ];
+    for (const [k2, v] of pairs) {
+      const r = sm.addRow([k2, v]);
+      r.getCell(1).font = { name: "Calibri", size: 11, color: { argb: "FF555555" } };
+      r.getCell(2).font = { name: "Calibri", size: 11, bold: true };
+    }
+    sm.addRow([]);
+    sm.addRow(["Score distribution"]).font = { name: "Calibri", size: 12, bold: true };
+    // bands scale with the paper length (45 Qs -> 0-8, 9-17, 18-26, 27-33, 34-40, 41-45)
+    const FM = fullMark();
+    const edges = [0, .2, .4, .6, .75, .9].map(f => Math.round(f * FM));
+    const bins = edges.map((lo, i) => [lo, i + 1 < edges.length ? edges[i + 1] - 1 : FM])
+                      .filter(([lo, hi], i, arr) => lo <= hi && (i === 0 || lo > arr[i - 1][0]));
+    const bh = sm.addRow(["Range", "Students", ""]);
+    bh.eachCell(c => { c.font = { ...baseFont, bold: true }; });
+    for (const [lo, hi] of bins) {
+      const n = scores.filter(v => v >= lo && v <= hi).length;
+      sm.addRow([`${lo}–${hi}`, n, "█".repeat(n)]);
+    }
+    sm.getColumn(1).width = 34; sm.getColumn(2).width = 12; sm.getColumn(3).width = 40;
+  }
+
+  if (FEAT.reports && key && ok.length && typeof addTopicSheet === "function")
+    addTopicSheet(wb, key, ok, { headFill, headFont, baseFont, borders });
+  const buf = await wb.xlsx.writeBuffer();
+  download(new Blob([buf],
+    { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    fileStem() + ".xlsx");
+};
+
+updateKeyInfo();
+</script>
+<script>
+"use strict";
+/* ---------- extras: DSE past papers, question topics, typed answers, student reports ----------
+ * Turned on per site through BRAND.features (see brands/<site>/brand.js). */
+let TOPICS = {};        // q -> ["Topic", ...]
+let PAPER = null;       // loaded DSE paper: { year, key, pct[], dist[] }
+let repId = null;       // student shown in the report card
+const NOT_A_TOPIC = /^I II III/;   // a question format, not a topic
+
+const tagsOf = q => (TOPICS[q] || []).filter(t => t && !NOT_A_TOPIC.test(t));
+function topicLabel(t) { return t.replace(/^(Co-Geo|Geometry|Data)\s*:\s*/, ""); }
+function knownTopics() { return new Set((window.DSE_CORE_MC && DSE_CORE_MC.topicList) || []); }
+function topicCat(t) {
+  if (/^Co-Geo/.test(t)) return "Coordinate geometry 坐標幾何";
+  if (/^Geometry/.test(t)) return "Geometry 幾何";
+  if (/^Data/.test(t)) return "Statistics & probability 概率統計";
+  return "Number & algebra 數與代數";
+}
+// HK % correct only when the key on screen is still the loaded DSE key
+function hkReady() {
+  if (!PAPER) return false;
+  const key = getKey();
+  if (!key) return false;
+  for (let q = 1; q <= NQ; q++) if (key[q] !== "*" && key[q] !== PAPER.key[q - 1]) return false;
+  return NQ === PAPER.key.length;
+}
+const hkPctQ = q => hkReady() ? PAPER.pct[q - 1] : null;
+
+function initExtras() {
+  if (FEAT.dse) {
+    $("dseRow").hidden = false;
+    const sc = document.createElement("script");
+    sc.src = "dse-core-mc.js";
+    sc.onload = () => {
+      const ys = Object.keys(DSE_CORE_MC.years).sort((a, b) => b - a);
+      $("dseYear").insertAdjacentHTML("beforeend", ys.map(y => `<option value="${y}">DSE ${y} Paper 2</option>`).join(""));
+      fillTopicList();
+    };
+    sc.onerror = () => { $("dseNote").textContent = "Past-paper data could not be loaded."; };
+    document.head.appendChild(sc);
+  }
+  if (FEAT.topics) { $("topicsBox").hidden = false; renderTopicGrid(); }
+  if (FEAT.typeIn) $("typeRow").hidden = false;
+}
+
+// ---------- DSE past papers ----------
+$("dseYear").addEventListener("change", () => {
+  const y = $("dseYear").value;
+  if (!y) return;
+  const d = DSE_CORE_MC.years[y];
+  PAPER = { year: +y, key: d.key, pct: d.pct, dist: d.dist };
+  $("key").value = d.key.match(/.{1,5}/g).join(" ");
+  $("cancelQ").value = "";
+  TOPICS = {};
+  d.topics.forEach((t, i) => { if (t.length) TOPICS[i + 1] = t.slice(); });
+  if (!$("examName").value || $("examName").dataset.auto) {
+    $("examName").value = `DSE ${y} Maths Paper 2`;
+    $("examName").dataset.auto = "1";
+  }
+  if (NQ !== d.key.length) setNQ(d.key.length);
+  renderTopicGrid();
+  onKeyChange();
+  $("dseNote").textContent = `Loaded DSE ${y}: ${d.key.length} answers, topics and HK % correct.`;
+});
+$("examName").addEventListener("input", () => delete $("examName").dataset.auto);
+
+// ---------- topics ----------
+function fillTopicList() {
+  const all = new Set([...knownTopics()]);
+  Object.values(TOPICS).forEach(ts => ts.forEach(t => all.add(t)));
+  $("topicList").innerHTML = [...all].sort().map(t => `<option value="${esc(t)}">`).join("");
+}
+function updateTopicCount() {
+  let n = 0;
+  for (let q = 1; q <= NQ; q++) if ((TOPICS[q] || []).length) n++;
+  $("topicCount").textContent = n ? `${n} of ${NQ} tagged` : "none yet";
+}
+function renderTopicGrid() {
+  if (!FEAT.topics) return;
+  let h = "";
+  for (let q = 1; q <= NQ; q++)
+    h += `<label class="tq"><span>Q${q}</span><input type="text" list="topicList" data-q="${q}" value="${esc((TOPICS[q] || []).join(" / "))}" aria-label="Topic for question ${q}"></label>`;
+  $("topicGrid").innerHTML = h;
+  $("topicGrid").querySelectorAll("input").forEach(inp => inp.addEventListener("change", () => {
+    const q = +inp.dataset.q;
+    const v = inp.value.split(/\s*\/\s*/).map(x => x.trim()).filter(Boolean);
+    if (v.length) TOPICS[q] = v; else delete TOPICS[q];
+    updateTopicCount(); fillTopicList(); afterRender();
+  }));
+  updateTopicCount();
+}
+$("nq").addEventListener("change", () => renderTopicGrid());
+$("topicClear").onclick = () => {
+  if (!Object.keys(TOPICS).length || !confirm("Clear all question topics?")) return;
+  TOPICS = {}; renderTopicGrid(); afterRender();
+};
+$("topicPasteBtn").onclick = () => {
+  if ($("topicPaste")) { $("topicPaste").parentNode.remove(); return; }
+  $("topicGrid").insertAdjacentHTML("beforebegin", `<div style="margin-top:10px">
+    <label for="topicPaste" class="hint" style="font-weight:400">One topic per line, Q1 first (a column copied from Excel works)</label>
+    <textarea id="topicPaste" rows="5" style="font-family:var(--font);letter-spacing:0"></textarea>
+    <div class="keyrow"><button class="small" id="topicPasteApply">Use these topics</button></div></div>`);
+  $("topicPasteApply").onclick = () => {
+    const lines = $("topicPaste").value.split(/\r?\n/);
+    lines.forEach((l, i) => {
+      if (i >= NQ) return;
+      const v = l.split("\t").pop().split(/\s*\/\s*/).map(x => x.trim()).filter(Boolean);
+      if (v.length) TOPICS[i + 1] = v; else delete TOPICS[i + 1];
+    });
+    $("topicPaste").parentNode.remove();
+    renderTopicGrid(); fillTopicList(); afterRender();
+  };
+};
+
+// ---------- typed answers (no scan needed) ----------
+const typedRaw = () => $("typeAns").value.toUpperCase().replace(/[\s,;.\-|\/\d]/g, "");
+$("typeAns").addEventListener("input", () => {
+  const n = typedRaw().length;
+  $("typeMsg").textContent = n ? `${n} of ${NQ} answers` : "";
+});
+$("typeAns").addEventListener("keydown", e => { if (e.key === "Enter") $("typeAdd").click(); });
+$("typeAdd").onclick = () => {
+  const raw = typedRaw();
+  const bad = [...raw].find(c => !"ABCDX".includes(c));
+  if (bad) { $("typeMsg").textContent = `"${bad}" is not A, B, C, D or X.`; return; }
+  if (raw.length !== NQ) { $("typeMsg").textContent = `${raw.length} of ${NQ} answers typed. Add the missing ones (X for blank).`; return; }
+  const name = $("typeName").value.trim();
+  const s = { id: nextId++, name: "Typed in", typed: true, student: name, status: "manual",
+              answers: {}, results: [], over: {}, flags: [], crops: {}, manualDraft: $("typeAns").value };
+  for (let q = 1; q <= NQ; q++) { s.answers[q] = raw[q - 1]; s.results.push({ q, answer: raw[q - 1] }); }
+  sheets.push(s);
+  $("typeAns").value = ""; $("typeName").value = "";
+  $("typeMsg").textContent = `Added ${name || "a student"}.`;
+  render();
+  if (FEAT.reports && getKey()) showReport(s.id);
+};
+
+// ---------- student report ----------
+function showReport(id) {
+  repId = id;
+  $("reportCard").hidden = false;
+  refreshReport();
+  $("reportCard").scrollIntoView({ behavior: "smooth" });
+}
+function closeReport() { repId = null; $("reportCard").hidden = true; }
+function refreshReport() {
+  if (repId == null || $("reportCard").hidden) return;
+  const key = getKey(), s = sheets.find(x => x.id === repId);
+  if (!s || !key || !isScored(s)) { closeReport(); return; }
+  const list = displayOrder().filter(isScored);
+  $("repWho").innerHTML = list.map(x => `<option value="${x.id}"${x.id === repId ? " selected" : ""}>${esc(x.student || shortName(x))}</option>`).join("");
+  $("reportBody").innerHTML = reportHTML(s, key);
+}
+$("repWho").onchange = () => { repId = +$("repWho").value; refreshReport(); };
+$("repClose").onclick = closeReport;
+$("repPrintOne").onclick = () => printReports([sheets.find(x => x.id === repId)]);
+$("repPrintAll").onclick = () => printReports(displayOrder().filter(isScored));
+function printReports(list) {
+  const key = getKey();
+  if (!key || !list.length) return;
+  $("printArea").innerHTML = list.map(s => reportHTML(s, key)).join("");
+  document.body.classList.add("printing");
+  window.print();
+}
+window.addEventListener("afterprint", () => { document.body.classList.remove("printing"); $("printArea").innerHTML = ""; });
+
+// per-topic (and per-category) numbers for one student
+function topicStats(s, key, ok) {
+  const cx = cancelledSet(), hk = hkReady(), known = knownTopics();
+  const qs = [];
+  for (let q = 1; q <= NQ; q++) if (!cx.has(q) && tagsOf(q).length) qs.push(q);
+  const allKnown = qs.length > 0 && qs.every(q => tagsOf(q).every(t => known.has(t)));
+  const topics = new Map(), cats = new Map(), order = [];
+  const add = (m, k, q, right) => {
+    if (!m.has(k)) { m.set(k, { n: 0, right: 0, cls: 0, hk: 0, qs: [] }); if (m === topics) order.push(k); }
+    const r = m.get(k);
+    r.n++; r.right += right ? 1 : 0; r.qs.push(q);
+    r.cls += ok.filter(x => eff(x, q) === key[q]).length / ok.length;
+    if (hk) r.hk += PAPER.pct[q - 1] / 100;
+  };
+  for (const q of qs) {
+    const right = eff(s, q) === key[q];
+    for (const t of tagsOf(q)) add(topics, t, q, right);
+    if (allKnown) for (const c of new Set(tagsOf(q).map(topicCat))) add(cats, c, q, right);
+  }
+  return { topics, cats, order, allKnown, hk, tagged: qs.length };
+}
+
+const pc = (a, b) => b ? Math.round(100 * a / b) : 0;
+function meter(you, mark) {
+  return `<div class="meter" role="img" aria-label="${you}%"><i style="width:${you}%"></i>${mark == null ? "" : `<b style="left:calc(${mark}% - 1px)" title="${mark}%"></b>`}</div>`;
+}
+function reportHTML(s, key) {
+  const ok = sheets.filter(isScored);
+  const cx = cancelledSet(), fm = fullMark(), sc = scoreOf(s, key, cx);
+  const st = topicStats(s, key, ok);
+  const who = esc(s.student || shortName(s));
+  const meta = [$("examName").value, $("examClass").value && `Class ${$("examClass").value}`, $("examDate").value].filter(Boolean).map(esc).join(" · ");
+  const brandMark = BRAND.logo ? `<img src="${BRAND.logo}" alt="">` : $("brandMark").innerHTML;
+
+  // tiles
+  let tiles = `<div class="tile main"><div class="k">Score</div><div class="v">${sc} <small>/ ${fm} · ${pctOf(sc).toFixed(0)}%</small></div></div>`;
+  if (ok.length > 1) {
+    const all = ok.map(x => scoreOf(x, key, cx));
+    const avg = all.reduce((a, b) => a + b, 0) / all.length;
+    const rank = 1 + all.filter(v => v > sc).length;
+    tiles += `<div class="tile"><div class="k">Class average</div><div class="v">${avg.toFixed(1)} <small>/ ${fm}</small></div></div>`;
+    tiles += `<div class="tile"><div class="k">Rank in class</div><div class="v">${rank} <small>of ${ok.length}</small></div></div>`;
+  }
+  if (st.hk) {
+    let hkAvg = 0;
+    for (let q = 1; q <= NQ; q++) { if (cx.has(q)) { if (giveMark()) hkAvg++; } else hkAvg += PAPER.pct[q - 1] / 100; }
+    tiles += `<div class="tile"><div class="k">HK candidates, DSE ${PAPER.year}</div><div class="v">${hkAvg.toFixed(1)} <small>/ ${fm} average</small></div></div>`;
+  }
+  // wrong answers
+  const wrong = [];
+  for (let q = 1; q <= NQ; q++) {
+    if (cx.has(q)) continue;
+    const a = eff(s, q);
+    if (a === key[q]) continue;
+    const ref = st.hk ? PAPER.pct[q - 1] : ok.length >= 5 ? Math.round(100 * ok.filter(x => eff(x, q) === key[q]).length / ok.length) : null;
+    wrong.push({ q, a, ref });
+  }
+  const easy = wrong.filter(w => w.ref != null && w.ref >= 70);
+  if (wrong.length && (st.hk || ok.length >= 5))
+    tiles += `<div class="tile"><div class="k">Easy marks lost</div><div class="v">${easy.length} <small>${st.hk ? "70%+ of HK got these" : "70%+ of class got these"}</small></div></div>`;
+
+  let body = `<div class="tiles">${tiles}</div>`;
+
+  if (st.tagged) {
+    const rows = [...st.topics.entries()].map(([t, r]) => ({ t, ...r, p: pc(r.right, r.n) }));
+    const strong = rows.filter(r => r.n >= 2 && r.p >= 80).sort((a, b) => b.p - a.p || b.n - a.n).slice(0, 5);
+    // topics with 2+ questions first: one missed question is weak evidence
+    const weak = rows.filter(r => r.p <= 50).sort((a, b) => (b.n >= 2) - (a.n >= 2) || a.p - b.p || b.n - a.n).slice(0, 5);
+    const li = r => `<li>${esc(topicLabel(r.t))} <span class="hint">${r.right}/${r.n}</span></li>`;
+    body += `<div class="sw2"><div class="strong"><h4>Strong topics</h4>${strong.length ? `<ul>${strong.map(li).join("")}</ul>` : `<p class="hint" style="margin:0">None yet with 2+ questions at 80%.</p>`}</div>
+      <div class="weak"><h4>Needs work</h4>${weak.length ? `<ul>${weak.map(li).join("")}</ul>` : `<p class="hint" style="margin:0">No topic at 50% or below.</p>`}</div></div>`;
+    const refHead = st.hk ? "HK" : ok.length > 1 ? "Class" : "";
+    const ref = r => st.hk ? pc(r.hk, r.n) : ok.length > 1 ? pc(r.cls, r.n) : null;
+    if (st.allKnown && st.cats.size > 1) {
+      body += `<h4 class="sec">By area</h4><table class="rt"><tr><th class="l">Area</th><th>Qs</th><th>You</th><th class="l" style="width:34%">&nbsp;</th>${refHead ? `<th>${refHead}</th>` : ""}</tr>`;
+      for (const [c, r] of st.cats) {
+        const p = pc(r.right, r.n), m = ref(r);
+        body += `<tr><td class="l">${esc(c)}</td><td>${r.n}</td><td>${p}%</td><td class="l">${meter(p, m)}</td>${refHead ? `<td>${m}%</td>` : ""}</tr>`;
+      }
+      body += `</table>`;
+    }
+    body += `<h4 class="sec">By topic, weakest first</h4><table class="rt"><tr><th class="l">Topic</th><th>Qs</th><th>Right</th><th class="l" style="width:30%">&nbsp;</th><th>You</th>${refHead ? `<th>${refHead}</th>` : ""}<th></th></tr>`;
+    const shown = rows.filter(r => r.n >= 2 || r.p < 100);
+    const hiddenRight = rows.length - shown.length;
+    shown.sort((a, b) => a.p - b.p || b.n - a.n).forEach(r => {
+      const m = ref(r);
+      const tag = r.n < 2 ? `<span class="tag f">1 question</span>` : r.p >= 80 ? `<span class="tag s">Strong</span>` : r.p <= 50 ? `<span class="tag w">Needs work</span>` : "";
+      body += `<tr><td class="l">${esc(topicLabel(r.t))}</td><td>${r.n}</td><td>${r.right}</td><td class="l">${meter(r.p, m)}</td><td>${r.p}%</td>${refHead ? `<td>${m}%</td>` : ""}<td>${tag}</td></tr>`;
+    });
+    body += `</table>`;
+    if (hiddenRight) body += `<p class="hint" style="margin:6px 0 0">Also correct: ${hiddenRight} more topic${hiddenRight > 1 ? "s" : ""} with one question each (${rows.filter(r => r.n < 2 && r.p === 100).map(r => esc(topicLabel(r.t))).join(", ")}).</p>`;
+  } else if (FEAT.topics) {
+    body += `<p class="hint">Add question topics (in step 2) to see strong and weak topics.</p>`;
+  }
+
+  if (wrong.length) {
+    const refName = st.hk ? "HK correct" : ok.length >= 5 ? "Class correct" : "";
+    body += `<h4 class="sec">Questions to review (${wrong.length})</h4><table class="rt"><tr><th>Q</th><th class="l">Topic</th><th>Answer given</th><th>Correct</th>${refName ? `<th>${refName}</th>` : ""}</tr>`;
+    for (const w of wrong) {
+      const t = tagsOf(w.q).map(topicLabel).join(" / ");
+      const given = w.a === "X" ? "blank" : w.a === "?" ? "unclear" : w.a;
+      body += `<tr><td>${w.q}</td><td class="l">${esc(t)}</td><td>${esc(given)}</td><td><b>${key[w.q]}</b></td>${refName ? `<td>${w.ref}%${w.ref >= 70 ? ` <span class="tag w">easy</span>` : ""}</td>` : ""}</tr>`;
+    }
+    body += `</table>`;
+  } else body += `<p><b>Full marks on every counted question.</b></p>`;
+
+  const foot = [st.hk ? `HK figures: HKEAA statistics for DSE ${PAPER.year} Mathematics Paper 2.` : "",
+                cx.size ? `Cancelled: Q${[...cx].sort((a, b) => a - b).join(", Q")}.` : ""].filter(Boolean).join(" ");
+  return `<article class="rep"><div class="rep-head"><div><h3>${who}</h3><div class="meta">${meta || "MC report"}</div></div>
+    <div class="rep-brand">${brandMark}<span>${esc(BRAND.name)}</span></div></div>${body}${foot ? `<p class="foot">${foot}</p>` : ""}</article>`;
+}
+
+// ---------- Excel: topic sheet ----------
+function addTopicSheet(wb, key, ok, st0) {
+  const anyTags = [...Array(NQ)].some((_, i) => tagsOf(i + 1).length);
+  if (!anyTags) return;
+  const cx = cancelledSet();
+  const stats = ok.map(s => topicStats(s, key, ok));
+  const topicsOrd = stats[0].order;
+  const catsOrd = stats[0].allKnown ? [...stats[0].cats.keys()] : [];
+  const cols = [...catsOrd.map(c => ["cat", c]), ...topicsOrd.map(t => ["topic", t])];
+  const ws = wb.addWorksheet("Topics", { views: [{ state: "frozen", xSplit: 3, ySplit: 2 }] });
+  const h1 = ws.addRow(["#", "Student", "Score", ...cols.map(([k, c]) => k === "cat" ? c : topicLabel(c))]);
+  const n0 = stats[0];
+  const h2 = ws.addRow(["", "Questions", fullMark(), ...cols.map(([k, c]) => (k === "cat" ? n0.cats : n0.topics).get(c).n)]);
+  [h1, h2].forEach(r => r.eachCell(c => { c.fill = st0.headFill; c.font = st0.headFont; c.border = st0.borders; c.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; }));
+  h1.height = 48;
+  const fill = v => ({ type: "pattern", pattern: "solid", fgColor: { argb: v >= 80 ? "FFE9F7EC" : v <= 50 ? "FFFBEAEA" : "FFFFF7E0" } });
+  ok.forEach((s, i) => {
+    const st = stats[i];
+    const vals = [i + 1, s.student || shortName(s), scoreOf(s, key, cx),
+      ...cols.map(([k, c]) => { const r = (k === "cat" ? st.cats : st.topics).get(c); return pc(r.right, r.n); })];
+    const row = ws.addRow(vals);
+    row.eachCell((c, col) => {
+      c.font = st0.baseFont; c.border = st0.borders; c.alignment = { horizontal: col === 2 ? "left" : "center" };
+      if (col > 3) { c.fill = fill(c.value); c.numFmt = '0"%"'; }
+    });
+  });
+  const avgRow = (label, getter) => {
+    const row = ws.addRow(["", label, "", ...cols.map(getter)]);
+    row.eachCell((c, col) => { c.font = { ...st0.baseFont, bold: true }; c.border = st0.borders; c.alignment = { horizontal: col === 2 ? "left" : "center" }; if (col > 3) c.numFmt = '0"%"'; });
+  };
+  avgRow("Class average", ([k, c]) => { const r = (k === "cat" ? n0.cats : n0.topics).get(c); return pc(r.cls, r.n); });
+  if (n0.hk) avgRow(`HK candidates (DSE ${PAPER.year})`, ([k, c]) => { const r = (k === "cat" ? n0.cats : n0.topics).get(c); return pc(r.hk, r.n); });
+  ws.getColumn(1).width = 4; ws.getColumn(2).width = 22; ws.getColumn(3).width = 8;
+  for (let i = 0; i < cols.length; i++) ws.getColumn(4 + i).width = 12;
+}
+
+initExtras();
+</script>
+</body>
+</html>
