@@ -209,6 +209,9 @@ details.topics[open] summary::before{transform:rotate(45deg)}
 .tag.s{background:var(--right);color:var(--good)} .tag.w{background:var(--wrong);color:var(--bad)} .tag.f{background:var(--grey-cell);color:var(--ink2)}
 .rep .foot{margin-top:14px;font-size:12px;color:var(--ink2)}
 #printArea{display:none}
+.mkpanel{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 14px;margin:-4px 0 14px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--ground)}
+.mkpanel[hidden]{display:none}
+.mkopt{display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:400}
 @media print{
   @page{size:A4;margin:12mm}
   body.printing > :not(#printArea){display:none!important}
@@ -216,6 +219,10 @@ details.topics[open] summary::before{transform:rotate(45deg)}
   body.printing{background:#fff}
   #printArea .rep{page-break-after:always;max-width:none}
   #printArea .rep:last-child{page-break-after:auto}
+  @page sheet{size:A4;margin:0}
+  #printArea .mk{page:sheet;break-after:page;margin:0}
+  #printArea .mk:last-child{break-after:auto}
+  #printArea .mk img{display:block;width:210mm;height:296mm;object-fit:contain}
   .tile.main{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .meter,.meter i,.tag,.rt td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 }
@@ -276,6 +283,17 @@ details.topics[open] summary::before{transform:rotate(45deg)}
       <div><label for="examDate">Date</label><input type="date" id="examDate"></div>
       <div><label for="nq">Questions</label><input type="number" id="nq" min="1" max="100" value="45"></div>
     </div>
+    <details class="topics" id="rosterBox">
+      <summary>Class list <span class="opt" id="rosterInfo">paste once; names fill in by themselves</span></summary>
+      <p class="note" style="margin:8px 0">One student per line: class number, then name. You can copy the two columns straight from Excel. Kept on this computer only, under the class name above, so next time it is already here.</p>
+      <textarea id="roster" rows="5" placeholder="1  Chan Tai Man&#10;2  Lee Siu Ming&#10;3  Wong Ka Yan"></textarea>
+      <div class="keyrow">
+        <button class="sec small" id="rosterFileBtn"><svg class="icon" aria-hidden="true"><use href="#i-file"/></svg>Load from Excel / CSV</button>
+        <input type="file" id="rosterFile" accept=".xlsx,.csv,.txt,text/plain" style="display:none">
+        <button class="sec small" id="rosterFill">Fill names in page order</button>
+        <span class="note" id="rosterMsg" aria-live="polite"></span>
+      </div>
+    </details>
   </section>
 
   <section class="card" aria-labelledby="h-key">
@@ -346,7 +364,17 @@ details.topics[open] summary::before{transform:rotate(45deg)}
     </select>
     <button class="small" id="dlXlsx"><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>Excel</button>
     <button class="sec small" id="dlCsv"><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>CSV</button>
+    <button class="sec small" id="mkOpen"><svg class="icon" aria-hidden="true"><use href="#i-down"/></svg>Marked sheets</button>
   </h2>
+  <div id="mkPanel" class="mkpanel" hidden>
+    <b>Marked answer sheets</b>
+    <label class="mkopt"><input type="radio" name="mkWhich" value="all" checked> All sheets</label>
+    <label class="mkopt"><input type="radio" name="mkWhich" value="some"> Only rows
+      <input type="text" id="mkRows" placeholder="e.g. 1-5, 8" style="width:130px;height:32px" aria-label="Rows to include"></label>
+    <button class="small" id="mkGo">Make PDF</button>
+    <button class="sec small" id="mkCancel">Cancel</button>
+    <span class="note" id="mkMsg">Uses the # numbers in the table. In the print window, choose "Save as PDF".</span>
+  </div>
   <div class="scroll" id="resultsTable"></div>
   <div class="legend">
     <span><i class="sw" style="background:var(--right)"></i>Correct</span>
@@ -355,7 +383,7 @@ details.topics[open] summary::before{transform:rotate(45deg)}
     <span><i class="sw" style="background:var(--grey-cell)"></i>Cancelled</span>
     <span>X blank · AB double mark · ? unclear</span>
   </div>
-  <p class="note" style="margin:8px 0 0">Click any answer to change it. Type names in the Student column; they go into the export. Use <b>view</b> to see a whole sheet.</p>
+  <p class="note" style="margin:8px 0 0">Click any answer to change it. In the Student column, type a name, or just the class number if the class list is filled in. Use <b>view</b> to see a whole sheet.</p>
 </section>
 
 <section class="card" id="reviewCard" style="display:none" aria-labelledby="h-review">
@@ -368,7 +396,7 @@ details.topics[open] summary::before{transform:rotate(45deg)}
   <h2 class="bar">Sheet <span id="overlayName" style="font-weight:500"></span><span class="sp"></span>
     <button class="sec small" onclick="closeOverlay()"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg>Close</button>
   </h2>
-  <p class="note" id="ovNote" style="margin:-6px 0 12px">Every box the app found is outlined. Click a box to make it the answer; click the chosen box again to set the question blank. Orange means changed by you.</p>
+  <p class="note" id="ovNote" style="margin:-6px 0 12px"><b style="color:#15803d">Green</b> = correct · <b style="color:#dc2626">Red</b> = wrong · <b style="color:#a16207">Yellow</b> = still to check in Check by eye · Grey = cancelled. Click a box to make it the answer; click the chosen box again to set the question blank.</p>
   <div id="ovWrap"><canvas id="ovCanvas"></canvas></div>
 </section>
 
@@ -1346,9 +1374,9 @@ function render() {
   const cx = cancelledSet();
   for (let q = 1; q <= NQ; q++) html += cx.has(q) ? `<th class="cx" title="Cancelled">${q}</th>` : `<th>${q}</th>`;
   if (key) html += "<th>score</th><th>%</th>";
-  html += "<th>check</th><th></th></tr>";
+  html += `<th title="Answers on this sheet still waiting in Check by eye">to check</th><th></th></tr>`;
   order.forEach((s, n) => {
-    const nameCell = `<td class="stick2 name" style="left:34px"><input type="text" value="${esc(s.student || "")}" placeholder="name…" data-id="${s.id}" aria-label="Student name for ${esc(s.name)}"></td>`;
+    const nameCell = `<td class="stick2 name" style="left:34px"><input type="text" value="${esc(s.student || "")}" placeholder="no. or name" data-id="${s.id}" aria-label="Student name for ${esc(s.name)}"></td>`;
     html += `<tr><td class="stick" style="min-width:34px">${n + 1}</td>${nameCell}<td style="text-align:left" title="${esc(s.name)}">${esc(shortName(s))}</td>`;
     const stCls = s.status === "ok" ? "st-ok" : s.status === "manual" ? "st-man" : "st-bad";
     html += `<td class="${stCls}">${STATUS_LABEL[s.status] || s.status}</td>`;
@@ -1408,7 +1436,11 @@ function render() {
       const nx = all[all.indexOf(inp) + 1];
       if (nx) nx.focus(); else inp.blur();
     });
-    inp.addEventListener("change", () => { if ($("sortBy").value === "name") render(); });
+    inp.addEventListener("change", () => {
+      const nm = /^\s*\d{1,3}\s*$/.test(inp.value) ? rosterName(inp.value.trim()) : null;
+      if (nm) { inp.value = nm; const s = sheets.find(x => x.id === +inp.dataset.id); if (s) s.student = nm; }
+      if ($("sortBy").value === "name") render();
+    });
   });
 
   $("resultsTable").querySelectorAll("td.ans").forEach(td =>
@@ -1539,25 +1571,56 @@ function drawOverlay() {
   if (!s || !s.canvas) return;
   const c = $("ovCanvas");
   c.width = s.canvas.width; c.height = s.canvas.height;
-  const ctx = c.getContext("2d");
+  markSheet(c.getContext("2d"), s);
+}
+
+// Paint one sheet with marking colours:
+// green = correct, red = wrong, yellow = still to check by eye, grey = cancelled.
+// With an answer key it also writes the score "X/N" in red, top right, 24 pt.
+const MK = {
+  ok:   { line: "#16a34a", fill: "rgba(22,163,74,.28)",  text: "#15803d" },
+  bad:  { line: "#dc2626", fill: "rgba(220,38,38,.24)",  text: "#dc2626" },
+  todo: { line: "#eab308", fill: "rgba(234,179,8,.38)",  text: "#a16207" },
+  off:  { line: "rgba(150,150,150,.55)", fill: null, text: "#8a8a8a" },
+};
+function markSheet(ctx, s) {
   ctx.drawImage(s.canvas, 0, 0);
   if (!s.slots || s.status !== "ok") return;   // unread page: picture only
-  ctx.lineWidth = 3; ctx.font = "bold 26px sans-serif";
+  const key = getKey(), cx = cancelledSet();
+  const W = s.canvas.width;
+  const lw = Math.max(2, Math.round(W / 700));
+  ctx.lineWidth = lw; ctx.font = `bold ${Math.round(W / 80)}px sans-serif`;
+  const unresolved = new Set((s.flags || []).filter(f => !(f.q in s.over)).map(f => f.q));
   s.results.forEach(r => {
+    if (r.q > NQ) return;
     const a = eff(s, r.q);
-    const manual = r.q in s.over;
+    let st;
+    if (cx.has(r.q)) st = "off";
+    else if (unresolved.has(r.q) || a === "?") st = "todo";
+    else if (!key) st = "ok";                     // no key yet: just show what was read
+    else st = a === key[r.q] ? "ok" : "bad";
+    // which boxes carry the colour
+    let pick = a === "X" || a === "?" ? "" : a;
+    if (st === "todo" && !pick) pick = [r.guess, r.faint].find(v => v && /^[ABCD]+$/.test(v)) || "ABCD";
     for (let oi = 0; oi < 4; oi++) {
       const b = s.slots[r.q + "_" + oi];
-      const hit = a !== "X" && a !== "?" && a.includes("ABCD"[oi]);
-      ctx.strokeStyle = hit ? (manual ? "rgba(217,119,6,.95)" : "rgba(0,170,0,.9)")
-                            : "rgba(150,150,150,.55)";
+      const on = st !== "off" && pick.includes("ABCD"[oi]);
+      const m = on ? MK[st] : MK.off;
+      if (on && m.fill) { ctx.fillStyle = m.fill; ctx.fillRect(b.x, b.y, b.w, b.h); }
+      ctx.strokeStyle = m.line;
       ctx.strokeRect(b.x, b.y, b.w, b.h);
     }
     const b = s.slots[r.q + "_0"];
-    ctx.fillStyle = manual ? "#d97706" :
-      a === "?" ? "#e11d48" : a === "X" ? "#2563eb" : "#0a7a2f";
-    ctx.fillText(a, b.x - 105, b.y + b.h);
+    ctx.fillStyle = MK[st].text;
+    ctx.fillText(st === "off" ? "—" : a, b.x - 105, b.y + b.h);
   });
+  if (key) {
+    const pt = W / 595.28;                          // A4 width in points
+    ctx.font = `bold ${Math.round(24 * pt)}px sans-serif`;
+    ctx.fillStyle = "#dc2626"; ctx.textAlign = "right"; ctx.textBaseline = "top";
+    ctx.fillText(`${scoreOf(s, key, cx)}/${fullMark()}`, W - 28 * pt, 18 * pt);
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+  }
 }
 
 $("ovCanvas").addEventListener("click", ev => {
@@ -1582,8 +1645,8 @@ $("ovCanvas").addEventListener("click", ev => {
 
 // ---------- exports ----------
 function fileStem() {
-  const n = ($("examName").value || "mc_results").trim().replace(/[^\w一-鿿-]+/g, "_");
-  return n || "mc_results";
+  const parts = [$("examName").value.trim() || "mc_results", $("examClass").value.trim(), $("examDate").value];
+  return parts.filter(Boolean).join("_").replace(/[^\w一-鿿-]+/g, "_").replace(/_+/g, "_") || "mc_results";
 }
 function median(a) {
   if (!a.length) return 0;
@@ -1608,13 +1671,13 @@ function download(blob, name) {
 
 $("dlCsv").onclick = () => {
   const key = getKey();
-  const head = ["student", "sheet", "status"];
+  const head = ["no", "student", "sheet", "status"];
   for (let q = 1; q <= NQ; q++) head.push("Q" + q);
   if (key) head.push("score", "pct");
   head.push("manual_overrides");
   const rows = [head];
   for (const s of displayOrder()) {
-    const r = [s.student || "", s.name, STATUS_LABEL[s.status] || s.status];
+    const r = [...splitStudent(s.student), s.name, STATUS_LABEL[s.status] || s.status];
     for (let q = 1; q <= NQ; q++) r.push(isScored(s) ? eff(s, q) : "");
     if (key) {
       const sc = isScored(s) ? scoreOf(s, key) : "";
@@ -1627,146 +1690,185 @@ $("dlCsv").onclick = () => {
   download(new Blob(["﻿" + csv], { type: "text/csv" }), fileStem() + ".csv");
 };
 
+// Excel column letters: 1 -> A, 27 -> AA
+function colL(n) { let t = ""; while (n > 0) { const m = (n - 1) % 26; t = String.fromCharCode(65 + m) + t; n = (n - m - 1) / 26; } return t; }
+function splitStudent(t) {   // "7 Chan Tai Man" -> ["7", "Chan Tai Man"]
+  const m = String(t || "").match(/^\s*(\d{1,3})[\s.,:-]+(.+)$/);
+  return m ? [m[1], m[2].trim()] : ["", String(t || "")];
+}
+
 $("dlXlsx").onclick = async () => {
   const key = getKey();
   const order = displayOrder();
   const ok = order.filter(isScored);
   const wb = new ExcelJS.Workbook();
+  wb.calcProperties.fullCalcOnLoad = true;   // Excel recalculates every formula on open
   const B = { style: "thin", color: { argb: "FFD9DEE8" } };
   const borders = { top: B, left: B, bottom: B, right: B };
   const headFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2F5597" } };
   const headFont = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
   const baseFont = { name: "Calibri", size: 11 };
-  const QC = 3;   // first answer column is QC + 1 (after #, Student, Sheet)
+  const solid = argb => ({ type: "pattern", pattern: "solid", fgColor: { argb }, bgColor: { argb } });
+  const QC = 4;   // first answer column is QC + 1 (after #, No., Student, Sheet)
+  const KEYROW = 3, FIRST = 6, LAST = FIRST + Math.max(order.length, 1) - 1;
+  const Q1L = colL(QC + 1), QNL = colL(QC + NQ);
+  const scL = colL(QC + NQ + 1), pcL = colL(QC + NQ + 2);
+  const cxs = cancelledSet(), give = giveMark();
+  const keyRange = `$${Q1L}$${KEYROW}:$${QNL}$${KEYROW}`;
 
   // ---- Results sheet ----
-  const ws = wb.addWorksheet("Results", { views: [{ state: "frozen", xSplit: 2, ySplit: 5 }] });
+  const ws = wb.addWorksheet("Results", { views: [{ state: "frozen", xSplit: 3, ySplit: 5 }] });
   ws.addRow([($("examName").value || BRAND.resultsTitle)]).font = { name: "Calibri", size: 16, bold: true };
   ws.addRow([`Class: ${$("examClass").value || "-"}    Date: ${$("examDate").value || "-"}    Sheets: ${sheets.length}`]).font = { name: "Calibri", size: 11, color: { argb: "FF666666" } };
-  ws.addRow([]);
-  ws.addRow(["X = blank · two letters = double-marked · ? = unresolved · orange = manual decision · grey = cancelled question"]).font = { name: "Calibri", size: 9, italic: true, color: { argb: "FF999999" } };
-  const hdr = ["#", "Student", "Sheet"];
+  const kr = ws.addRow([]);
+  ws.addRow(["X = blank · two letters = double-marked · ? = unresolved · orange text = changed by teacher · grey = cancelled · Score and % are formulas: edit the key (row 3) or any answer and they update."]).font = { name: "Calibri", size: 9, italic: true, color: { argb: "FF999999" } };
+  if (key) {
+    kr.getCell(3).value = "Answer key  (* = cancelled)";
+    kr.getCell(3).font = { ...baseFont, bold: true };
+    kr.getCell(3).alignment = { horizontal: "right" };
+    for (let q = 1; q <= NQ; q++) {
+      const c = kr.getCell(QC + q);
+      c.value = cxs.has(q) ? "*" : key[q];
+      c.font = { ...baseFont, bold: true }; c.alignment = { horizontal: "center" };
+      c.fill = solid("FFFFF6D6"); c.border = borders;
+    }
+    const fm = kr.getCell(QC + NQ + 1);
+    fm.value = { formula: give ? `COUNTA(${keyRange})` : `COUNTA(${keyRange})-COUNTIF(${keyRange},"~*")`, result: fullMark() };
+    fm.font = { ...baseFont, bold: true }; fm.alignment = { horizontal: "center" }; fm.border = borders;
+    fm.note = give ? "Full mark = number of questions (cancelled ones are given to everyone)." : "Full mark = number of questions minus cancelled ones.";
+    kr.getCell(QC + NQ + 2).value = "← full mark";
+    kr.getCell(QC + NQ + 2).font = { name: "Calibri", size: 9, color: { argb: "FF888888" } };
+  }
+  const hdr = ["#", "No.", "Student", "Sheet"];
   for (let q = 1; q <= NQ; q++) hdr.push(q);
   if (key) hdr.push("Score", "%");
   hdr.push("Manual");
-  const cxs = cancelledSet();
-  const greyFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE4E7E6" } };
+  const greyFill = solid("FFE4E7E6");
   const hrow = ws.addRow(hdr);
-  hrow.eachCell(c => { c.fill = headFill; c.font = headFont; c.border = borders;
-                       c.alignment = { horizontal: "center" }; });
-  cxs.forEach(q => { const c = hrow.getCell(QC + q); c.fill = { ...greyFill, fgColor: { argb: "FF9AA5A0" } }; c.note = "Cancelled"; });
+  hrow.eachCell(c => { c.fill = headFill; c.font = headFont; c.border = borders; c.alignment = { horizontal: "center" }; });
+  cxs.forEach(q => { const c = hrow.getCell(QC + q); c.fill = solid("FF9AA5A0"); c.note = "Cancelled"; });
   order.forEach((s, i) => {
-    const vals = [i + 1, s.student || "", s.name];
+    const [no, nm] = splitStudent(s.student);
+    const vals = [i + 1, no ? +no : "", nm, s.name];
     for (let q = 1; q <= NQ; q++) vals.push(isScored(s) ? eff(s, q) : "");
-    if (key) {
-      const sc = isScored(s) ? scoreOf(s, key) : "";
-      vals.push(sc, sc === "" ? "" : Math.round(10 * pctOf(sc)) / 10);
-    }
-    vals.push(Object.keys(s.over || {}).length || "");
     const row = ws.addRow(vals);
+    const R = row.number;
+    if (key) {
+      if (isScored(s)) {
+        const sc = scoreOf(s, key, cxs);
+        row.getCell(QC + NQ + 1).value = { formula: `SUMPRODUCT(--(${Q1L}${R}:${QNL}${R}=${keyRange}))` + (give ? `+COUNTIF(${keyRange},"~*")` : ""), result: sc };
+        row.getCell(QC + NQ + 2).value = { formula: `IF($${scL}$${KEYROW}=0,"",ROUND(${scL}${R}/$${scL}$${KEYROW}*100,1))`, result: Math.round(10 * pctOf(sc)) / 10 };
+      }
+      row.getCell(QC + NQ + 3).value = Object.keys(s.over || {}).length || "";
+    } else row.getCell(QC + NQ + 1).value = Object.keys(s.over || {}).length || "";
     row.eachCell({ includeEmpty: true }, (c, col) => {
       c.font = baseFont; c.border = borders;
-      c.alignment = { horizontal: col === 2 || col === 3 ? "left" : "center" };
+      c.alignment = { horizontal: col === 3 || col === 4 ? "left" : "center" };
     });
-    if (!isScored(s)) row.getCell(3).font = { ...baseFont, color: { argb: "FFCC0000" } };
+    if (!isScored(s)) row.getCell(4).font = { ...baseFont, color: { argb: "FFCC0000" } };
     for (let q = 1; q <= NQ; q++) {
       const c = row.getCell(QC + q);
       const a = String(c.value || "");
-      if (cxs.has(q)) {
-        c.fill = greyFill; c.font = { ...baseFont, color: { argb: "FF9AA5A0" }, strike: true };
-        continue;
-      }
-      if (q in (s.over || {}))
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFE9CC" } };
-      else if (a === "?" || (a.length > 1 && a !== "X"))
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFD6DC" } };
-      else if (key && a && a !== key[q])
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFBEAEA" } };
-      else if (key && a === key[q])
-        c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE9F7EC" } };
-      if (a === "X") c.font = { ...baseFont, color: { argb: "FFAAAAAA" } };
+      if (cxs.has(q)) { c.font = { ...baseFont, color: { argb: "FF9AA5A0" }, strike: true }; continue; }
+      if (q in (s.over || {})) { c.font = { ...baseFont, bold: true, color: { argb: "FFC2410C" } }; c.note = "Changed by teacher"; }
+      else if (a === "X") c.font = { ...baseFont, color: { argb: "FFAAAAAA" } };
     }
   });
-  ws.getColumn(1).width = 4; ws.getColumn(2).width = 20; ws.getColumn(3).width = 24;
+  // colours follow the formulas: change an answer or the key and the cell recolours
+  const ansRef = `${Q1L}${FIRST}:${QNL}${LAST}`, tl = `${Q1L}${FIRST}`, kc = `${Q1L}$${KEYROW}`;
+  ws.addConditionalFormatting({ ref: ansRef, rules: [
+    { type: "expression", priority: 1, formulae: [`${kc}="*"`], style: { fill: greyFill } },
+    { type: "expression", priority: 2, formulae: [`OR(${tl}="?",AND(LEN(${tl})>1,${tl}<>"X"))`], style: { fill: solid("FFFFD6DC") } },
+    ...(key ? [
+      { type: "expression", priority: 3, formulae: [`AND(${tl}<>"",${tl}=${kc})`], style: { fill: solid("FFE9F7EC") } },
+      { type: "expression", priority: 4, formulae: [`AND(${tl}<>"",${tl}<>${kc})`], style: { fill: solid("FFFBEAEA") } },
+    ] : []),
+  ] });
+  ws.getColumn(1).width = 4; ws.getColumn(2).width = 5; ws.getColumn(3).width = 20; ws.getColumn(4).width = 22;
   for (let q = 1; q <= NQ; q++) ws.getColumn(QC + q).width = 3.6;
-  if (key) { ws.getColumn(QC + NQ + 1).width = 7; ws.getColumn(QC + NQ + 2).width = 6; }
+  if (key) { ws.getColumn(QC + NQ + 1).width = 7; ws.getColumn(QC + NQ + 2).width = 9; }
   ws.getColumn(QC + NQ + (key ? 3 : 1)).width = 8;
 
   if (key && ok.length) {
-    // ---- Item analysis ----
+    const S = `Results!$${scL}$${FIRST}:$${scL}$${LAST}`;
+    const scores = ok.map(s => scoreOf(s, key, cxs));
+    const sorted = [...scores].sort((a, b) => a - b);
+    // ---- Item analysis (all formulas over the Results sheet) ----
     const wa = wb.addWorksheet("ItemAnalysis", { views: [{ state: "frozen", ySplit: 1 }] });
-    const scores = ok.map(s => scoreOf(s, key));
-    const rank = [...ok.keys()].sort((a, b) => scores[b] - scores[a]);
     const nG = Math.max(1, Math.round(ok.length * 0.27));
-    const topSet = new Set(rank.slice(0, nG)), botSet = new Set(rank.slice(-nG));
-    const h2 = wa.addRow(["Q", "Key", "Correct", "N", "Correct %", "Discrimination",
-                          "A", "B", "C", "D", "Blank X", "Unclear ?", "Double"]);
-    h2.eachCell(c => { c.fill = headFill; c.font = headFont; c.border = borders;
-                       c.alignment = { horizontal: "center" }; });
+    const topCut = sorted[sorted.length - nG], botCut = sorted[nG - 1];
+    const h2 = wa.addRow(["Q", "Key", "Correct", "N", "Correct %", "Discrimination", "A", "B", "C", "D", "Blank X", "Unclear ?", "Double"]);
+    h2.eachCell(c => { c.fill = headFill; c.font = headFont; c.border = borders; c.alignment = { horizontal: "center" }; });
+    h2.getCell(6).note = "Top 27% of students minus bottom 27%, as share answering correctly. Above 0.3 = good question; below 0 = check the key.";
     for (let q = 1; q <= NQ; q++) {
+      const L = colL(QC + q), r = `Results!$${L}$${FIRST}:$${L}$${LAST}`;
       if (cxs.has(q)) {
         const row = wa.addRow([q, "cancelled"]);
-        row.eachCell(c => { c.font = { ...baseFont, color: { argb: "FF9AA5A0" } }; c.border = borders;
-                            c.alignment = { horizontal: "center" }; });
+        row.eachCell(c => { c.font = { ...baseFont, color: { argb: "FF9AA5A0" } }; c.border = borders; c.alignment = { horizontal: "center" }; });
         continue;
       }
-      const dist = { A: 0, B: 0, C: 0, D: 0, X: 0, "?": 0, m: 0 };
-      let corr = 0, topC = 0, botC = 0;
-      ok.forEach((s, j) => {
-        const a = eff(s, q);
-        if (a in dist) dist[a]++; else if (a.length > 1) dist.m++;
-        if (a === key[q]) { corr++; if (topSet.has(j)) topC++; if (botSet.has(j)) botC++; }
-      });
-      const disc = Math.round(100 * (topC - botC) / nG) / 100;
-      const row = wa.addRow([q, key[q], corr, ok.length,
-        Math.round(1000 * corr / ok.length) / 10, disc,
-        dist.A, dist.B, dist.C, dist.D, dist.X, dist["?"], dist.m]);
-      row.eachCell(c => { c.font = baseFont; c.border = borders;
-                          c.alignment = { horizontal: "center" }; });
-      const pc = row.getCell(5);
-      const v = pc.value;
-      pc.fill = { type: "pattern", pattern: "solid",
-        fgColor: { argb: v < 50 ? "FFFFD6DC" : v < 75 ? "FFFFF2CC" : "FFE9F7EC" } };
-      // bold the key's option column
+      const R = q + 1;
+      const cnt = v => ok.filter(s => eff(s, q) === v).length;
+      const corr = cnt(key[q]);
+      const inTop = ok.filter((s, j) => scores[j] >= topCut), inBot = ok.filter((s, j) => scores[j] <= botCut);
+      const disc = Math.round(100 * (inTop.filter(s => eff(s, q) === key[q]).length / inTop.length
+                                    - inBot.filter(s => eff(s, q) === key[q]).length / inBot.length)) / 100;
+      const ng = `MAX(1,ROUND(D${R}*0.27,0))`, top = `LARGE(${S},${ng})`, bot = `SMALL(${S},${ng})`;
+      const row = wa.addRow([
+        q,
+        { formula: `Results!${L}$${KEYROW}`, result: key[q] },
+        { formula: `COUNTIF(${r},B${R})`, result: corr },
+        { formula: `COUNT(${S})`, result: ok.length },
+        { formula: `IF(D${R}=0,"",ROUND(C${R}/D${R}*100,1))`, result: Math.round(1000 * corr / ok.length) / 10 },
+        { formula: `ROUND(COUNTIFS(${r},B${R},${S},">="&${top})/COUNTIF(${S},">="&${top})-COUNTIFS(${r},B${R},${S},"<="&${bot})/COUNTIF(${S},"<="&${bot}),2)`, result: disc },
+        ...["A", "B", "C", "D", "X"].map(v => ({ formula: `COUNTIF(${r},"${v}")`, result: cnt(v) })),
+        { formula: `COUNTIF(${r},"~?")`, result: cnt("?") },
+        { formula: `SUMPRODUCT(--(LEN(${r})>1))`, result: ok.filter(s => eff(s, q).length > 1).length },
+      ]);
+      row.eachCell(c => { c.font = baseFont; c.border = borders; c.alignment = { horizontal: "center" }; });
       row.getCell(6 + "ABCD".indexOf(key[q]) + 1).font = { ...baseFont, bold: true };
     }
+    wa.addConditionalFormatting({ ref: `E2:E${NQ + 1}`, rules: [
+      { type: "expression", priority: 1, formulae: ['AND(E2<>"",E2<50)'], style: { fill: solid("FFFFD6DC") } },
+      { type: "expression", priority: 2, formulae: ['AND(E2<>"",E2<75)'], style: { fill: solid("FFFFF2CC") } },
+      { type: "expression", priority: 3, formulae: ['E2<>""'], style: { fill: solid("FFE9F7EC") } },
+    ] });
     wa.columns.forEach((c, i) => c.width = i === 5 ? 14 : 9);
 
-    // ---- Summary ----
+    // ---- Summary (formulas over the Results sheet) ----
     const sm = wb.addWorksheet("Summary");
-    const sorted = [...scores].sort((a, b) => a - b);
     const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
-    const sd = scores.length > 1 ? Math.sqrt(scores.map(v => (v - mean) ** 2)
-              .reduce((a, b) => a + b, 0) / (scores.length - 1)) : 0;
+    const sd = scores.length > 1 ? Math.sqrt(scores.map(v => (v - mean) ** 2).reduce((a, b) => a + b, 0) / (scores.length - 1)) : 0;
     sm.addRow([($("examName").value || BRAND.resultsTitle) + " — Summary"]).font = { name: "Calibri", size: 14, bold: true };
     sm.addRow([]);
+    const F = (formula, result) => ({ formula, result });
     const pairs = [
-      ["Students (scored sheets)", ok.length],
-      ["Full mark", fullMark()],
+      ["Students (scored sheets)", F(`COUNT(${S})`, ok.length)],
+      ["Full mark", F(`Results!${scL}${KEYROW}`, fullMark())],
       ["Cancelled questions", cxs.size ? [...cxs].sort((a, b) => a - b).map(q => "Q" + q).join(", ") +
-        (giveMark() ? " (everyone gets the mark)" : " (not counted)") : "none"],
-      ["Mean", Math.round(mean * 100) / 100],
-      ["Median", median(scores)],
-      ["Standard deviation", Math.round(sd * 100) / 100],
-      ["Highest", Math.max(...scores)],
-      ["Upper quartile (Q3)", Math.round(quantile(sorted, .75) * 10) / 10],
-      ["Lower quartile (Q1)", Math.round(quantile(sorted, .25) * 10) / 10],
-      ["Lowest", Math.min(...scores)],
-      ["Hardest questions (lowest correct %)",
+        (give ? " (everyone gets the mark)" : " (not counted)") : "none"],
+      ["Mean", F(`ROUND(AVERAGE(${S}),2)`, Math.round(mean * 100) / 100)],
+      ["Median", F(`MEDIAN(${S})`, median(scores))],
+      ["Standard deviation", F(`IF(COUNT(${S})>1,ROUND(STDEV(${S}),2),0)`, Math.round(sd * 100) / 100)],
+      ["Highest", F(`MAX(${S})`, Math.max(...scores))],
+      ["Upper quartile (Q3)", F(`ROUND(QUARTILE(${S},3),1)`, Math.round(quantile(sorted, .75) * 10) / 10)],
+      ["Lower quartile (Q1)", F(`ROUND(QUARTILE(${S},1),1)`, Math.round(quantile(sorted, .25) * 10) / 10)],
+      ["Lowest", F(`MIN(${S})`, Math.min(...scores))],
+      ["Hardest questions (lowest correct %, at export)",
         [...Array(NQ)].map((_, i) => i + 1).filter(q => !cxs.has(q))
           .map(q => [q, ok.filter(s => eff(s, q) === key[q]).length])
           .sort((a, b) => a[1] - b[1]).slice(0, 5).map(([q]) => "Q" + q).join(", ")],
-      ["Unresolved ? remaining",
-        ok.reduce((n, s) => n + [...Array(NQ)].filter((_, i) => eff(s, i + 1) === "?").length, 0)],
+      ["Unresolved ? remaining", F(`COUNTIF(Results!${Q1L}${FIRST}:${QNL}${LAST},"~?")`,
+        ok.reduce((n, s) => n + [...Array(NQ)].filter((_, i) => eff(s, i + 1) === "?").length, 0))],
     ];
     for (const [k2, v] of pairs) {
       const r = sm.addRow([k2, v]);
       r.getCell(1).font = { name: "Calibri", size: 11, color: { argb: "FF555555" } };
       r.getCell(2).font = { name: "Calibri", size: 11, bold: true };
+      r.getCell(2).alignment = { horizontal: "left" };
     }
     sm.addRow([]);
     sm.addRow(["Score distribution"]).font = { name: "Calibri", size: 12, bold: true };
-    // bands scale with the paper length (45 Qs -> 0-8, 9-17, 18-26, 27-33, 34-40, 41-45)
     const FM = fullMark();
     const edges = [0, .2, .4, .6, .75, .9].map(f => Math.round(f * FM));
     const bins = edges.map((lo, i) => [lo, i + 1 < edges.length ? edges[i + 1] - 1 : FM])
@@ -1775,9 +1877,12 @@ $("dlXlsx").onclick = async () => {
     bh.eachCell(c => { c.font = { ...baseFont, bold: true }; });
     for (const [lo, hi] of bins) {
       const n = scores.filter(v => v >= lo && v <= hi).length;
-      sm.addRow([`${lo}–${hi}`, n, "█".repeat(n)]);
+      const r = sm.addRow([`${lo}–${hi}`]);
+      r.getCell(2).value = F(`COUNTIFS(${S},">=${lo}",${S},"<=${hi}")`, n);
+      r.getCell(3).value = F(`REPT("█",B${r.number})`, "█".repeat(n));
+      r.getCell(2).alignment = { horizontal: "left" };
     }
-    sm.getColumn(1).width = 34; sm.getColumn(2).width = 12; sm.getColumn(3).width = 40;
+    sm.getColumn(1).width = 44; sm.getColumn(2).width = 14; sm.getColumn(3).width = 40;
   }
 
   if (FEAT.reports && key && ok.length && typeof addTopicSheet === "function")
@@ -1954,6 +2059,110 @@ function printReports(list) {
   document.body.classList.add("printing");
   window.print();
 }
+// ---------- class list (kept in this browser only) ----------
+function parseRoster(txt) {
+  const out = [];
+  for (const line of String(txt || "").split(/\r?\n/)) {
+    const m = line.match(/^\s*(\d{1,3})\s*[\t,.:;-]?\s*(.*\S)\s*$/);
+    if (m && /\D/.test(m[2])) out.push({ no: +m[1], name: m[2].replace(/^[\t,;]+|[\t,;]+$/g, "").replace(/\t+/g, " ").trim() });
+  }
+  return out;
+}
+const rosterKey = () => "mc.classlist." + $("examClass").value.trim().toUpperCase();
+function rosterSave() {
+  if (!$("examClass").value.trim()) return;
+  try { localStorage.setItem(rosterKey(), $("roster").value); } catch (e) {}
+}
+function rosterLoad() {
+  if (!$("examClass").value.trim()) return;
+  let t = null;
+  try { t = localStorage.getItem(rosterKey()); } catch (e) {}
+  if (t) { $("roster").value = t; rosterInfo(true); } else rosterInfo();
+}
+function rosterInfo(loaded) {
+  const n = parseRoster($("roster").value).length;
+  $("rosterInfo").textContent = n ? `${n} students${loaded ? " (saved list for " + $("examClass").value.trim() + ")" : ""}`
+                                  : "paste once; names fill in by themselves";
+}
+function rosterName(no) {
+  const r = parseRoster($("roster").value).find(x => x.no === +no);
+  return r ? `${r.no} ${r.name}` : null;
+}
+$("examClass").addEventListener("change", rosterLoad);
+$("roster").addEventListener("input", () => { rosterInfo(); rosterSave(); });
+$("rosterFileBtn").onclick = () => $("rosterFile").click();
+$("rosterFile").onchange = async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  let lines = [];
+  try {
+    if (/\.xlsx$/i.test(f.name)) {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(await f.arrayBuffer());
+      wb.worksheets[0].eachRow(row => {
+        const v = row.values.slice(1).map(c => c && typeof c === "object" ? (c.result ?? c.text ?? "") : c ?? "");
+        const i = v.findIndex(x => /^\s*\d{1,3}\s*$/.test(String(x)));
+        if (i >= 0) { const nm = v.slice(i + 1).find(x => String(x).trim() && /\D/.test(String(x))); if (nm) lines.push(`${String(v[i]).trim()}\t${String(nm).trim()}`); }
+      });
+    } else lines = (await f.text()).split(/\r?\n/);
+  } catch (err) { $("rosterMsg").textContent = "Could not read that file."; return; }
+  const list = parseRoster(lines.join("\n"));
+  if (!list.length) { $("rosterMsg").textContent = "No lines with a class number and a name were found."; return; }
+  $("roster").value = list.map(r => `${r.no}\t${r.name}`).join("\n");
+  rosterInfo(); rosterSave();
+  $("rosterMsg").textContent = `Loaded ${list.length} students.`;
+};
+$("rosterFill").onclick = () => {
+  const list = parseRoster($("roster").value);
+  if (!list.length) { $("rosterMsg").textContent = "Paste the class list first."; return; }
+  if (!sheets.length) { $("rosterMsg").textContent = "Load the answer sheets first; then press this."; return; }
+  if (sheets.some(s => s.student) && !confirm("Replace the names already typed?")) return;
+  sheets.forEach((s, i) => { s.student = list[i] ? `${list[i].no} ${list[i].name}` : ""; });
+  render();
+  $("rosterMsg").textContent = `Filled ${Math.min(list.length, sheets.length)} names in page order. If someone was absent, type the right class number in that row; the name fills in.`;
+};
+
+// ---------- marked answer sheets (print / save as PDF) ----------
+let mkOldTitle = null;
+function parseRows(txt, max) {
+  const set = new Set();
+  for (const part of txt.split(/[,，\s]+/)) {
+    const m = part.match(/^(\d+)(?:-(\d+))?$/);
+    if (!m) { if (part) return null; continue; }
+    let a = +m[1], b = m[2] ? +m[2] : a;
+    if (a > b) [a, b] = [b, a];
+    for (let i = a; i <= b; i++) if (i >= 1 && i <= max) set.add(i);
+  }
+  return set;
+}
+$("mkOpen").onclick = () => { $("mkPanel").hidden = !$("mkPanel").hidden; };
+$("mkCancel").onclick = () => { $("mkPanel").hidden = true; };
+$("mkRows").addEventListener("focus", () => { document.querySelector('input[name=mkWhich][value=some]').checked = true; });
+$("mkGo").onclick = () => {
+  const order = displayOrder();
+  let rows = null;
+  if (document.querySelector('input[name=mkWhich]:checked').value === "some") {
+    rows = parseRows($("mkRows").value, order.length);
+    if (!rows || !rows.size) { $("mkMsg").textContent = `Type row numbers from 1 to ${order.length}, like 1-5, 8.`; return; }
+  }
+  const list = order.filter((s, i) => (!rows || rows.has(i + 1)) && s.canvas);
+  if (!list.length) { $("mkMsg").textContent = "No scanned sheets in that choice."; return; }
+  $("mkMsg").textContent = `Preparing ${list.length} sheet${list.length > 1 ? "s" : ""}…`;
+  setTimeout(() => {
+    const c = document.createElement("canvas");
+    $("printArea").innerHTML = list.map(s => {
+      c.width = s.canvas.width; c.height = s.canvas.height;
+      markSheet(c.getContext("2d"), s);
+      return `<div class="mk"><img src="${c.toDataURL("image/jpeg", 0.9)}" alt=""></div>`;
+    }).join("");
+    $("mkMsg").textContent = 'In the print window, choose "Save as PDF".';
+    mkOldTitle = document.title; document.title = fileStem() + "_marked";
+    document.body.classList.add("printing");
+    window.print();
+  }, 30);
+};
+
+window.addEventListener("afterprint", () => { if (mkOldTitle !== null) { document.title = mkOldTitle; mkOldTitle = null; } });
 window.addEventListener("afterprint", () => { document.body.classList.remove("printing"); $("printArea").innerHTML = ""; });
 
 // per-topic (and per-category) numbers for one student
