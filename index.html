@@ -137,8 +137,8 @@ td a:hover{text-decoration:underline}
 .count{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;background:var(--warn-soft);color:var(--warn);font-size:12.5px;font-weight:600}
 .count.done{background:var(--acc-soft);color:var(--good)}
 #reviewList{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:12px}
-.flagbox{border:1px solid var(--line);border-left:3px solid var(--bad);border-radius:var(--r-sm);padding:12px 14px;background:var(--surface)}
-.flagbox.resolved{border-left-color:var(--good);background:#fbfcfb}
+.flagbox{border:1px solid color-mix(in srgb,var(--bad) 28%,var(--wrong));border-radius:var(--r-sm);padding:12px 14px;background:var(--wrong)}
+.flagbox.resolved{border-color:color-mix(in srgb,var(--good) 28%,var(--right));background:var(--right)}
 .flagbox b{font-weight:600}
 .flagbox .note{display:block;margin-top:2px;font-family:var(--mono);font-size:12px}
 .flagbox img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:4px;margin-top:10px;background:#fff}
